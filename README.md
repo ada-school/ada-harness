@@ -29,9 +29,9 @@ Cero dependencias. Node 18 o superior. Licencia MIT.
 
 Este repo nació de un modelo mental, y ese modelo mental está en un solo archivo:
 
-**[`docs/GenAI interactive learning.html`](docs/GenAI%20interactive%20learning.html)**
+**[`docs/Anatomía de un Agente.html`](docs/Anatom%C3%ADa%20de%20un%20Agente.html)**
 
-Ábrelo en el navegador (o en `http://localhost:3000/docs/GenAI%20interactive%20learning.html` con el servidor corriendo). Son ocho capas, cada una con una pieza interactiva:
+Ábrelo en el navegador (o en `http://localhost:3000/docs/Anatom%C3%ADa%20de%20un%20Agente.html` con el servidor corriendo). Son ocho capas, cada una con una pieza interactiva:
 
 | Capa | Qué muestra | Interacción |
 |---|---|---|
@@ -149,7 +149,7 @@ ada-harness/
 ├── app/
 │   └── index.html                 Chat minimalista con inspector de contexto.
 ├── docs/
-│   └── GenAI interactive learning.html    El explicador interactivo.
+│   └── Anatomía de un Agente.html    El explicador interactivo.
 ├── workspace/                     Donde el agente lee, escribe y ejecuta. Nada fuera de aquí.
 ├── .env.example                   ANTHROPIC_API_KEY, modelos, puerto.
 ├── package.json                   Sin dependencias.
@@ -160,14 +160,14 @@ Qué archivo responde a qué pregunta:
 
 ```mermaid
 flowchart LR
-    Q1["¿Quién es el agente?"] --> F1[harness/system.md]
-    Q2["¿Cómo se trabaja en este repo?"] --> F2[AGENTS.md]
-    Q3["¿Qué sabe hacer paso a paso?"] --> F3[harness/skills/]
-    Q4["¿Qué recuerda de mí y de mis proyectos?"] --> F4[harness/memory/]
-    Q5["¿Qué puede ejecutar?"] --> F5[harness/tools/index.js]
-    Q6["¿Qué entra al contexto y cuándo?"] --> F6[harness/routing.json]
-    Q7["¿Cómo corre el loop?"] --> F7[src/harness.js]
-    Q8["¿A quién delega?"] --> F8[harness/agents/]
+    Q1["¿Quién es el agente?"] --> F1["harness/system.md"]
+    Q2["¿Cómo se trabaja en este repo?"] --> F2["AGENTS.md"]
+    Q3["¿Qué sabe hacer paso a paso?"] --> F3["harness/skills/"]
+    Q4["¿Qué recuerda de mí y de mis proyectos?"] --> F4["harness/memory/"]
+    Q5["¿Qué puede ejecutar?"] --> F5["harness/tools/index.js"]
+    Q6["¿Qué entra al contexto y cuándo?"] --> F6["harness/routing.json"]
+    Q7["¿Cómo corre el loop?"] --> F7["src/harness.js"]
+    Q8["¿A quién delega?"] --> F8["harness/agents/"]
 ```
 
 ---
@@ -178,18 +178,18 @@ No existe un "módulo de agencia" dentro del modelo. `src/harness.js` es un cicl
 
 ```mermaid
 flowchart TD
-    START([Mensaje del usuario]) --> ASM["1. assembleContext()<br/>system + guía + índices + memoria + historial + mensaje"]
-    ASM --> CHECK{"¿tokens estimados<br/>> presupuesto × 0.8?"}
+    START(["Mensaje del usuario"]) --> ASM["Paso 1: assembleContext()<br/>system + guía + índices + memoria + historial + mensaje"]
+    ASM --> CHECK{"¿tokens estimados<br/>superan presupuesto × 0.8?"}
     CHECK -->|sí| COMPACT["compact()<br/>una llamada extra resume lo viejo"]
     COMPACT --> CALL
-    CHECK -->|no| CALL["2. callModel()<br/>POST /v1/messages con tools"]
+    CHECK -->|no| CALL["Paso 2: callModel()<br/>POST /v1/messages con tools"]
     CALL --> STOP{"stop_reason"}
-    STOP -->|"end_turn"| DONE([Devolver texto. Fin del turno])
-    STOP -->|"tool_use"| EXEC["3. Ejecutar cada herramienta<br/>localmente, dentro de workspace/"]
-    EXEC --> OFF{"¿resultado<br/>> 6k tokens?"}
+    STOP -->|"end_turn"| DONE(["Devolver texto. Fin del turno"])
+    STOP -->|"tool_use"| EXEC["Paso 3: ejecutar cada herramienta<br/>localmente, dentro de workspace/"]
+    EXEC --> OFF{"¿resultado<br/>supera 6k tokens?"}
     OFF -->|sí| DISK["Guardar en workspace/.context/<br/>dejar referencia + primeras líneas"]
     OFF -->|no| APPEND
-    DISK --> APPEND["4. Pegar tool_result al historial"]
+    DISK --> APPEND["Paso 4: pegar tool_result al historial"]
     APPEND --> ASM
     style CALL fill:#d9641e,color:#fff,stroke:#d9641e
     style COMPACT fill:#d9641e,color:#fff,stroke:#d9641e
@@ -245,7 +245,7 @@ flowchart LR
 
 Parámetros en `harness/routing.json`:
 
-```json
+```jsonc
 {
   "contextBudgetTokens": 120000,     // presupuesto, no el límite del modelo
   "compactAt": 0.8,                   // compactar al 80%
@@ -310,7 +310,7 @@ flowchart LR
         INS["Inspector<br/>• ventana por capas<br/>• llamadas del turno<br/>• herramientas<br/>• tokens reales de entrada<br/>• eventos: compactación, subagentes"]
     end
     CHAT -->|"POST /api/chat {session, message}"| SRV[src/server.js]
-    SRV --> LOOP[src/harness.js: turn()]
+    SRV --> LOOP["src/harness.js: turn()"]
     LOOP -->|"{text, trace}"| SRV
     SRV --> CHAT
     SRV --> INS
@@ -355,7 +355,7 @@ Rutas del servidor:
 | Ruta | Método | Qué hace |
 |---|---|---|
 | `/` | GET | El chat |
-| `/docs/GenAI interactive learning.html` | GET | El explicador |
+| `/docs/Anatomía de un Agente.html` | GET | El explicador |
 | `/api/chat` | POST `{session, message}` | Un turno completo. Devuelve `{text, trace}` |
 | `/api/reset` | POST | Borra todas las sesiones |
 
@@ -374,7 +374,7 @@ En orden de impacto por minuto invertido:
 
 ```mermaid
 flowchart LR
-    P1["1. AGENTS.md"] --> P2["2. memoria base"] --> P3["3. skills"] --> P4["4. herramientas"] --> P5["5. subagentes"] --> P6["6. routing.json"]
+    P1["Paso 1<br/>AGENTS.md"] --> P2["Paso 2<br/>memoria base"] --> P3["Paso 3<br/>skills"] --> P4["Paso 4<br/>herramientas"] --> P5["Paso 5<br/>subagentes"] --> P6["Paso 6<br/>routing.json"]
 ```
 
 ---
@@ -404,7 +404,7 @@ flowchart LR
 
 ## Referencias
 
-- Explicador interactivo: [`docs/GenAI interactive learning.html`](docs/GenAI%20interactive%20learning.html)
+- Explicador interactivo: [`docs/Anatomía de un Agente.html`](docs/Anatom%C3%ADa%20de%20un%20Agente.html)
 - API de mensajes y manejo de `stop_reason`: https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons
 
 ## Licencia

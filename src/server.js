@@ -39,9 +39,11 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     // estáticos: / -> app/index.html, /docs/... -> docs/...
-    let file = req.url === "/" ? "app/index.html" : req.url.startsWith("/docs/") ? req.url.slice(1) : "app" + req.url;
-    const abs = path.join(ROOT, file.split("?")[0]);
-    if (!abs.startsWith(ROOT)) return json(res, 403, { error: "no" });
+    const clean = decodeURIComponent(req.url.split("?")[0]);
+    const file = clean === "/" ? "app/index.html" : clean.startsWith("/docs/") ? clean.slice(1) : "app" + clean;
+    const abs = path.resolve(ROOT, file);
+    const allowed = [path.join(ROOT, "app") + path.sep, path.join(ROOT, "docs") + path.sep];
+    if (!allowed.some((d) => abs.startsWith(d))) return json(res, 403, { error: "no" });
     const data = await fs.readFile(abs);
     res.writeHead(200, { "content-type": TYPES[path.extname(abs)] || "application/octet-stream" });
     res.end(data);
@@ -57,5 +59,5 @@ function json(res, code, obj) {
 
 server.listen(PORT, () => {
   console.log(`ADA Harness en http://localhost:${PORT}`);
-  console.log(`Explicador en http://localhost:${PORT}/docs/anatomia-de-un-agente.html`);
+  console.log(`Explicador en http://localhost:${PORT}/docs/Anatom%C3%ADa%20de%20un%20Agente.html`);
 });
