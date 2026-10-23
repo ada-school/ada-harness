@@ -1,0 +1,21 @@
+{
+  "contextBudgetTokens": 120000,
+  "compactAt": 0.8,
+  "keepLastMessagesOnCompact": 4,
+  "maxToolLoops": 25,
+  "layers": {
+    "system":        { "load": "always",    "source": "harness/system.md" },
+    "projectGuide":  { "load": "always",    "source": "AGENTS.md" },
+    "skillsIndex":   { "load": "always",    "source": "harness/skills" },
+    "skillContent":  { "load": "on-demand", "via": "load_skill" },
+    "memoryCore":    { "load": "always",    "source": ["harness/memory/profile.md", "harness/memory/preferences.md"] },
+    "memoryIndex":   { "load": "always",    "source": "harness/memory/areas" },
+    "memoryContent": { "load": "on-demand", "via": "read_memory" },
+    "history":       { "load": "always",    "compact": true },
+    "toolResults":   { "load": "always",    "offloadAbove": 6000, "offloadTo": "workspace/.context" }
+  },
+  "agents": {
+    "researcher": { "tools": ["list_dir", "read_file", "web_fetch"], "maxToolLoops": 12 },
+    "reviewer":   { "tools": ["list_dir", "read_file", "run_command"], "maxToolLoops": 10 }
+  }
+}

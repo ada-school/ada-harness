@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anatomía de un Agente</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: una columna de lectura (~68ch) con paneles interactivos a ancho completo; el modelo siempre en ámbar, las capas de contexto en hues frías. */
+:root{
+  --bg:#eef1f6; --bg2:#ffffff; --fg:#141a26; --fg2:#525c6e; --line:#cfd6e2;
+  --model:#d9641e; --model-soft:#fbe6d6;
+  --l-sys:#2f5fa8; --l-tools:#1f8a7a; --l-mem:#7a4bb8; --l-route:#2c7fb8; --l-skill:#b03a7c; --l-hist:#6b7a94; --l-user:#1a9a4a; --l-res:#b88a1f;
+  --code-bg:#1b2130; --code-fg:#e6ebf4;
+  --display:"Bricolage Grotesque",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0f1420; --bg2:#161d2b; --fg:#e8ecf4; --fg2:#a2acbe; --line:#2a3345;
+  --model:#f08a3e; --model-soft:#3b2416;
+  --l-sys:#6a97e0; --l-tools:#45c2ad; --l-mem:#b48ae8; --l-route:#63b2e6; --l-skill:#e876b3; --l-hist:#8f9db8; --l-user:#4fd27f; --l-res:#e2b54a;
+  --code-bg:#0a0e17; --code-fg:#dce3ef; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0f1420; --bg2:#161d2b; --fg:#e8ecf4; --fg2:#a2acbe; --line:#2a3345;
+  --model:#f08a3e; --model-soft:#3b2416;
+  --l-sys:#6a97e0; --l-tools:#45c2ad; --l-mem:#b48ae8; --l-route:#63b2e6; --l-skill:#e876b3; --l-hist:#8f9db8; --l-user:#4fd27f; --l-res:#e2b54a;
+  --code-bg:#0a0e17; --code-fg:#dce3ef; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.55;margin:0;
+  padding-block:0 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1040px;margin:0 auto}
+.prose{max-width:68ch}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.08;margin:0}
+h1{font-size:clamp(38px,6vw,68px);font-weight:800;letter-spacing:-.02em}
+h2{font-size:clamp(26px,3.4vw,36px);font-weight:700;letter-spacing:-.015em}
+h3{font-size:19px;font-weight:700}
+p{margin:0}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg2)}
+section{padding-block:56px;border-top:1px solid var(--line)}
+section:first-of-type{border-top:0;padding-top:48px}
+.stack{display:grid;gap:18px}
+.lead{font-size:19px;color:var(--fg2)}
+.model-word{color:var(--model);font-weight:700}
+.note{font-size:14px;color:var(--fg2)}
+code,.mono{font-family:var(--mono);font-size:.92em}
+kbd{font-family:var(--mono);font-size:12px;padding:1px 6px;border:1px solid var(--line);border-radius:4px;background:var(--bg2)}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--bg2);color:var(--fg);border-radius:8px;padding:8px 14px}
+button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--model);outline-offset:2px}
+button.primary{background:var(--model);border-color:var(--model);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+
+/* nav */
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);
+  margin-left:calc(-1 * max(16px,env(safe-area-inset-left,0px)));margin-right:calc(-1 * max(16px,env(safe-area-inset-right,0px)));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.nav ul{list-style:none;margin:0 auto;padding:0;max-width:1040px;display:flex;gap:4px;overflow-x:auto;font-family:var(--mono);font-size:12px}
+.nav a{display:block;padding:12px 10px;color:var(--fg2);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent}
+.nav a:hover{color:var(--fg)}
+
+/* hero pipe */
+.pipe{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;margin-top:8px}
+.pipe .box{border:1px solid var(--line);background:var(--bg2);border-radius:10px;padding:14px 16px;min-width:0}
+.pipe .box b{font-family:var(--display);font-size:17px;display:block;margin-bottom:4px}
+.pipe .box small{color:var(--fg2);font-size:13px}
+.pipe .core{background:var(--model);color:#fff;border-color:var(--model);text-align:center;border-radius:999px;padding:18px 26px;font-family:var(--display);font-weight:800;font-size:20px}
+.pipe .arrow{display:none}
+@media (max-width:640px){.pipe{grid-template-columns:1fr}.pipe .core{border-radius:12px}}
+
+/* next-token demo */
+.panel{border:1px solid var(--line);background:var(--bg2);border-radius:14px;padding:22px;display:grid;gap:16px;min-width:0}
+.sentence{font-family:var(--mono);font-size:18px;display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.sentence .pick{color:var(--model);font-weight:500;border-bottom:2px solid var(--model);min-width:3ch}
+.cands{display:grid;gap:8px}
+.cand{display:grid;grid-template-columns:9ch 1fr 5ch;gap:10px;align-items:center;font-family:var(--mono);font-size:14px}
+.cand .bar{height:12px;background:var(--line);border-radius:3px;overflow:hidden}
+.cand .bar i{display:block;height:100%;background:var(--model);transition:width .25s}
+.cand .pct{text-align:right;font-variant-numeric:tabular-nums;color:var(--fg2)}
+.ctrl{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:14px}
+.ctrl input[type=range]{width:160px;accent-color:var(--model)}
+
+/* context assembler */
+.asm{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:20px}
+@media (max-width:800px){.asm{grid-template-columns:1fr}}
+.layers{display:grid;gap:6px}
+.layer{display:grid;grid-template-columns:18px 1fr auto;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);cursor:pointer;text-align:left;width:100%}
+.layer[aria-pressed="true"]{border-color:var(--c)}
+.layer .sw{width:14px;height:14px;border-radius:4px;background:var(--c);opacity:.3}
+.layer[aria-pressed="true"] .sw{opacity:1}
+.layer .nm{font-weight:600;font-size:15px}
+.layer .who{font-size:12px;color:var(--fg2);display:block;font-weight:400}
+.layer .tk{font-family:var(--mono);font-size:12px;color:var(--fg2);font-variant-numeric:tabular-nums}
+.layer.locked{cursor:default}
+.window{display:grid;gap:12px}
+.meter{height:34px;border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;background:var(--bg2)}
+.meter i{display:block;height:100%;transition:flex-basis .3s;flex:0 0 0%}
+.meter-lbl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--fg2);font-variant-numeric:tabular-nums}
+.assembled{background:var(--code-bg);color:var(--code-fg);border-radius:10px;padding:14px;font-family:var(--mono);font-size:12.5px;line-height:1.5;min-height:300px;overflow:auto;max-height:440px}
+.assembled .blk{border-left:3px solid var(--c);padding:6px 10px;margin-bottom:8px;white-space:pre-wrap;word-break:break-word}
+.assembled .blk b{color:var(--c);display:block;font-weight:500;margin-bottom:2px}
+.assembled .out{border-left:3px solid var(--model);padding:6px 10px;color:var(--model)}
+.detail{border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px;padding:14px 16px;background:var(--bg2);display:grid;gap:6px;font-size:15px}
+.detail h3{color:var(--c)}
+.detail dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:4px 0 0;font-size:14px}
+.detail dt{color:var(--fg2);font-family:var(--mono);font-size:12px;padding-top:2px}
+.detail dd{margin:0}
+
+/* loop */
+.loop{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+@media (max-width:800px){.loop{grid-template-columns:1fr}}
+.steps{display:grid;gap:8px}
+.step{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);display:grid;grid-template-columns:auto 1fr;gap:12px;opacity:.38;transition:opacity .2s}
+.step.on{opacity:1}
+.step.cur{border-color:var(--model);box-shadow:0 0 0 3px var(--model-soft)}
+.step .who{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:5px;align-self:start;white-space:nowrap}
+.who.m{background:var(--model);color:#fff}.who.h{background:var(--line);color:var(--fg)}.who.u{background:var(--l-user);color:#fff}
+.step p{font-size:14px}
+.step code{display:block;margin-top:4px;font-size:12.5px;color:var(--fg2);white-space:pre-wrap}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg2)}
+.stat b{font-family:var(--display);font-size:26px;display:block;font-variant-numeric:tabular-nums;line-height:1}
+.stat span{font-size:12px;color:var(--fg2)}
+.ctxstrip{display:flex;flex-wrap:wrap;gap:4px;min-height:40px}
+.ctxstrip i{display:block;height:28px;border-radius:4px;background:var(--c);flex:0 0 var(--w);opacity:.9;position:relative}
+.ctxstrip i::after{content:attr(data-l);position:absolute;inset:0;font:10px var(--mono);color:#fff;padding:7px 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
+/* window fill */
+.wlist{display:grid;gap:4px;max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--bg2)}
+.wi{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:5px 9px;border-left:3px solid var(--c);border-radius:0 6px 6px 0;font-family:var(--mono);font-size:12px;background:var(--bg)}
+.wi.sum{border-style:dashed;color:var(--fg2)}
+.wi.ref{color:var(--fg2)}
+.wi .tk{color:var(--fg2);font-variant-numeric:tabular-nums}
+.wi.gone{opacity:.45;text-decoration:line-through}
+/* subagents */
+.sub{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:800px){.sub{grid-template-columns:1fr}}
+.ctxbox{border:2px solid var(--line);border-radius:12px;background:var(--bg2);padding:12px;display:grid;gap:6px}
+.ctxbox h3{font-size:15px;display:flex;justify-content:space-between;align-items:baseline}
+.ctxbox h3 small{font-family:var(--mono);font-size:11px;color:var(--fg2);font-weight:400}
+.ctxbox .b{border-left:3px solid var(--c);padding:5px 9px;font-family:var(--mono);font-size:12px;background:var(--bg);border-radius:0 6px 6px 0}
+.ctxbox .b.o{border-color:var(--model);color:var(--model)}
+.ctxbox .ret{border:1px dashed var(--l-res);border-radius:6px;padding:6px 9px;font-family:var(--mono);font-size:12px}
+.ctxbox.child{border-style:dashed}
+.link{font-family:var(--mono);font-size:12px;color:var(--fg2);text-align:center;padding:4px}
+
+/* table */
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg2);font-weight:500}
+td:first-child{font-weight:600;white-space:nowrap}
+td .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle}
+.scroller{overflow-x:auto}
+
+.truths{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.truth{border-top:3px solid var(--model);padding-top:12px}
+.truth b{font-family:var(--display);font-size:18px;display:block;margin-bottom:6px}
+.truth p{font-size:14px;color:var(--fg2)}
+/* focus field */
+.focus-wrap{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:18px;align-items:stretch}
+@media (max-width:800px){.focus-wrap{grid-template-columns:1fr}}
+#field{width:100%;max-width:100%;aspect-ratio:4/3;border:1px solid var(--line);border-radius:14px;background:var(--code-bg);display:block}
+.focus-side{display:grid;gap:14px;align-content:start}
+.focus-step{border:1px solid var(--line);border-radius:10px;background:var(--bg2);padding:12px 14px;font-family:var(--mono);font-size:13px;line-height:1.5;min-height:92px;white-space:pre-wrap;word-break:break-word;border-left:4px solid var(--c,var(--fg2))}
+.fmeters{display:grid;gap:10px}
+.fmeters>div{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;font-size:12px}
+.fmeters .eyebrow{grid-column:1/-1}
+.fbar{height:10px;background:var(--line);border-radius:3px;overflow:hidden}
+.fbar i{display:block;height:100%;background:var(--model);width:100%;transition:width .4s}
+textarea{font:inherit;font-family:var(--mono);font-size:13px;width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg);color:var(--fg);resize:vertical;min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-height:28px;align-items:center}
+.chip{font-family:var(--mono);font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--model);color:var(--model);background:var(--model-soft)}
+.chip.spec{border-color:var(--l-user);color:var(--l-user);background:transparent}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+
+<nav class="nav" aria-label="Secciones"><ul>
+<li><a href="#llamada">1 · La llamada</a></li>
+<li><a href="#enfoque">2 · El enfoque</a></li>
+<li><a href="#contexto">3 · El contexto</a></li>
+<li><a href="#loop">4 · El loop</a></li>
+<li><a href="#lleno">5 · Ventana llena</a></li>
+<li><a href="#subagentes">6 · Subagentes</a></li>
+<li><a href="#mapa">7 · Mapa</a></li>
+<li><a href="#verdades">8 · Lo invariante</a></li>
+</ul></nav>
+
+<div class="wrap">
+
+<section id="llamada">
+<div class="stack">
+<p class="eyebrow">Anatomía de un agente</p>
+<h1>Todo termina en una llamada.</h1>
+<p class="lead prose">Tu intuición es correcta. Un modelo de lenguaje recibe una secuencia de tokens con un límite, y devuelve otra secuencia de tokens elegida token a token de forma probabilística. Prompts, skills, memoria, herramientas, agentes y subagentes son formas de decidir <em>qué tokens entran</em> y <em>qué se hace con los que salen</em>. El modelo nunca ve nada más que eso.</p>
+
+<div class="pipe">
+  <div class="box"><b>Entrada</b><small>Una sola secuencia de tokens. Sistema + archivos + historial + tu mensaje, concatenados. Límite duro (ventana de contexto).</small></div>
+  <div class="core">Modelo</div>
+  <div class="box"><b>Salida</b><small>Tokens, uno tras otro, cada uno muestreado de una distribución de probabilidad. Puede ser prosa, JSON, código o una "llamada a herramienta". Sigue siendo texto.</small></div>
+</div>
+
+<h3>Pruébalo: el siguiente token es una distribución</h3>
+<div class="panel">
+  <div class="sentence"><span>La capital de Colombia es</span> <span class="pick" id="pick">&nbsp;</span></div>
+  <div class="cands" id="cands"></div>
+  <div class="ctrl">
+    <label>Temperatura <input type="range" id="temp" min="0.1" max="2" step="0.1" value="0.7"> <span class="mono" id="tempv">0.7</span></label>
+    <button class="primary" id="sample">Muestrear un token</button>
+    <button id="sample10">Muestrear 10 veces</button>
+    <span class="note" id="tally"></span>
+  </div>
+  <p class="note">Con temperatura baja casi siempre sale "Bogotá". Con temperatura alta las opciones raras ganan peso. Esto es lo único que hace el modelo: calcular esta distribución y muestrear. Todo lo demás es ingeniería alrededor.</p>
+</div>
+</div>
+</section>
+
+<section id="enfoque">
+<div class="stack">
+<p class="eyebrow">Capa 2</p>
+<h2>El contexto no agrega conocimiento. Enfoca.</h2>
+<p class="prose">Todo lo que el modelo sabe ya está en sus pesos, distribuido en un espacio enorme. Sin contexto, la probabilidad está repartida sobre miles de continuaciones plausibles. Cada capa que agregas (rol, skill, memoria, tu mensaje) mueve el foco a una región más pequeña de ese espacio y concentra la probabilidad ahí. Un sistema "especializado" es un sistema con buen foco, no uno con más conocimiento. Avanza paso a paso.</p>
+
+<div class="focus-wrap">
+  <canvas id="field" aria-label="Mapa animado del espacio de conocimiento del modelo con una región enfocada por el contexto"></canvas>
+  <div class="focus-side">
+    <div class="focus-step" id="fstep"></div>
+    <div class="fmeters">
+      <div><span class="eyebrow">Región activa</span><div class="fbar"><i id="fregion"></i></div><span class="mono" id="fregionv"></span></div>
+      <div><span class="eyebrow">Entropía de la salida</span><div class="fbar"><i id="fent"></i></div><span class="mono" id="fentv"></span></div>
+    </div>
+    <div class="ctrl"><button class="primary" id="fnext">Agregar contexto</button><button id="freset">Reiniciar</button><button id="fplay">Reproducir todo</button></div>
+    <p class="note" id="fnote"></p>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Escribe tu propio prompt y mira cómo mueve el foco</h3>
+  <textarea id="fprompt" rows="3" placeholder="Ej: Escribe un post de LinkedIn en español, tono cercano, para rectores de universidades en Guatemala sobre IA en la formación técnica"></textarea>
+  <div class="chips" id="fchips"><span class="note">Las palabras que coincidan con una región del mapa aparecen aquí. Mientras más específico el prompt, más pequeña la región.</span></div>
+  <div class="ctrl"><button class="primary" id="fuse">Usar como primer paso de la secuencia</button><span class="note" id="fusenote"></span></div>
+</div>
+
+<div class="truths">
+  <div class="truth"><b>Enfocar ≠ enseñar</b><p>Si la región que quieres no existe en el entrenamiento, el foco aterriza en el vecino más cercano y el modelo responde con confianza y sin fundamento. Ahí entran los resultados de herramientas: traen texto nuevo al contexto.</p></div>
+  <div class="truth"><b>Contexto ≠ fine-tuning</b><p>El contexto cambia dónde estás parado en el mapa. El fine-tuning cambia el mapa (los pesos). El primero es barato y reversible; el segundo es caro y permanente.</p></div>
+  <div class="truth"><b>Más no siempre enfoca</b><p>Texto irrelevante o contradictorio vuelve a desenfocar: el modelo reparte atención entre todo lo que está en la ventana. Por eso curar contexto importa más que acumularlo.</p></div>
+</div>
+</div>
+</section>
+
+<section id="contexto">
+<div class="stack">
+<p class="eyebrow">Capa 3</p>
+<h2>El contexto es la única memoria.</h2>
+<p class="prose">El modelo no recuerda nada entre llamadas. Lo que "sabe" en este momento es exactamente lo que alguien metió en la ventana de contexto. Activa y desactiva capas para ver cómo se ensambla el prompt real y cuánto espacio ocupa cada una. Toca una capa para leer qué es y quién la escribe.</p>
+
+<div class="asm">
+  <div class="layers" id="layers"></div>
+  <div class="window">
+    <div class="meter-lbl"><span>Ventana de contexto</span><span id="used">0 / 200.000 tokens</span></div>
+    <div class="meter" id="meter"></div>
+    <div class="assembled" id="assembled"></div>
+    <div class="detail" id="detail" style="--c:var(--fg2)"><h3>Toca una capa</h3><p class="note">Verás qué contiene, quién la escribe y cuándo entra al contexto.</p></div>
+  </div>
+</div>
+<p class="note prose">Las cifras de tokens son ilustrativas. Lo importante es la proporción: las definiciones de herramientas y el historial suelen pesar mucho más que tu mensaje. Por eso existe el "context routing": cargar el índice de todo y el contenido completo solo cuando hace falta.</p>
+</div>
+</section>
+
+<section id="loop">
+<div class="stack">
+<p class="eyebrow">Capa 4</p>
+<h2>Un agente es un loop alrededor de la llamada.</h2>
+<p class="prose">No hay un "módulo de agencia" dentro del modelo. Un programa externo (el harness) llama al modelo, lee la salida, y si la salida tiene la forma de una llamada a herramienta, la ejecuta, pega el resultado al final del contexto y vuelve a llamar. Se detiene cuando el modelo responde sin pedir herramientas. Avanza paso a paso.</p>
+
+<div class="loop">
+  <div class="steps" id="steps"></div>
+  <div class="stack">
+    <div class="stats">
+      <div class="stat"><b id="ncalls">0</b><span>llamadas al modelo</span></div>
+      <div class="stat"><b id="ntok">0</b><span>tokens en contexto</span></div>
+      <div class="stat"><b id="ntools">0</b><span>herramientas ejecutadas</span></div>
+    </div>
+    <p class="eyebrow">Contexto de la próxima llamada</p>
+    <div class="ctxstrip" id="ctxstrip"></div>
+    <div class="ctrl"><button class="primary" id="next">Siguiente paso</button><button id="reset">Reiniciar</button></div>
+    <p class="note">Fíjate en que el contexto solo crece. Cada llamada reenvía todo lo anterior. Un agente que "trabaja 2 horas" es cientos de llamadas, cada una stateless, cada una con el historial completo adentro. Ese crecimiento es lo que los subagentes resuelven.</p>
+  </div>
+</div>
+</div>
+</section>
+
+<section id="lleno">
+<div class="stack">
+<p class="eyebrow">Capa 5</p>
+<h2>Cuando la ventana se llena.</h2>
+<p class="prose">La ventana tiene un límite duro: si la secuencia lo supera, la llamada falla. Pero el problema real empieza antes. Con la ventana medio llena el modelo ya reparte atención entre demasiado texto, pierde lo que está en el medio y repite errores que tiene adelante. El harness tiene que hacer algo con lo viejo, y solo hay tres jugadas: tirarlo, resumirlo, o sacarlo a un archivo y dejar una referencia. Llena la ventana y pruébalas.</p>
+
+<div class="loop">
+  <div class="stack">
+    <div class="meter-lbl"><span>Ventana de contexto</span><span id="wused"></span></div>
+    <div class="meter" id="wmeter"></div>
+    <div class="fmeters">
+      <div><span class="eyebrow">Fidelidad de recuperación (qué tan bien encuentra algo del inicio)</span><div class="fbar"><i id="wq"></i></div><span class="mono" id="wqv"></span></div>
+    </div>
+    <div class="ctrl">
+      <button class="primary" id="wadd">Agregar un turno de trabajo (~9k)</button>
+      <button id="wreset">Reiniciar</button>
+    </div>
+    <p class="eyebrow">Qué hacer con lo viejo</p>
+    <div class="ctrl">
+      <button id="wtrunc" disabled>Truncar</button>
+      <button id="wcomp" disabled>Compactar (resumir)</button>
+      <button id="woff" disabled>Descargar a archivos</button>
+    </div>
+    <p class="note" id="wnote">Agrega turnos hasta pasar el 70%. Ahí se habilitan las tres estrategias.</p>
+  </div>
+  <div class="stack">
+    <p class="eyebrow">Contenido de la ventana</p>
+    <div class="wlist" id="wlist"></div>
+    <div class="stats">
+      <div class="stat"><b id="wcalls">1</b><span>llamadas hechas</span></div>
+      <div class="stat"><b id="wreproc">0</b><span>tokens reprocesados en total</span></div>
+      <div class="stat"><b id="wlost">0</b><span>detalles perdidos</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="truths">
+  <div class="truth"><b>Truncar</b><p>Se borran los turnos más viejos. Barato y tonto: lo que se fue, se fue. Sirve para chats casuales, no para trabajo largo.</p></div>
+  <div class="truth"><b>Compactar</b><p>Una llamada extra al modelo resume lo viejo en un texto corto que reemplaza al historial. Conserva decisiones y estado, pierde detalles. Es lo que la mayoría de agentes hace al 80 o 90%.</p></div>
+  <div class="truth"><b>Descargar a archivos</b><p>Los resultados grandes se escriben a disco y en la ventana queda solo una referencia. El detalle sigue existiendo y se relee si hace falta. Es la misma idea que la memoria y los skills: índice adentro, contenido afuera.</p></div>
+  <div class="truth"><b>El costo oculto</b><p>Cada llamada reprocesa toda la ventana. Una conversación de 100 turnos a 150k tokens cuesta y tarda mucho más por turno que una de 10. El caché de prompt abarata lo repetido, pero no lo encoge.</p></div>
+</div>
+</div>
+</section>
+
+<section id="subagentes">
+<div class="stack">
+<p class="eyebrow">Capa 6</p>
+<h2>Un subagente es otra ventana de contexto.</h2>
+<p class="prose">Cuando el orquestador "lanza un subagente", el harness abre un contexto nuevo y vacío, le pone su propio prompt de sistema y la tarea, y corre el mismo loop. El subagente no ve la conversación del padre. Cuando termina, su informe final vuelve al padre como un resultado de herramienta más. Nada mágico: dos loops, dos contextos, el mismo modelo.</p>
+
+<div class="sub">
+  <div class="ctxbox" style="--c:var(--l-sys)">
+    <h3>Orquestador <small>contexto A · 200k</small></h3>
+    <div class="b" style="--c:var(--l-sys)">system: eres el agente principal…</div>
+    <div class="b" style="--c:var(--l-tools)">tools: web_search, write_file, <b>spawn_agent</b></div>
+    <div class="b" style="--c:var(--l-mem)">memoria: /profile.md, /areas/…</div>
+    <div class="b" style="--c:var(--l-user)">user: investiga competidores y arma el informe</div>
+    <div class="b o">assistant → spawn_agent("investigar competidor X")</div>
+    <div class="b o">assistant → spawn_agent("investigar competidor Y")</div>
+    <div class="ret">tool_result: informe X (800 tokens)</div>
+    <div class="ret">tool_result: informe Y (650 tokens)</div>
+    <div class="b o">assistant: "Aquí está el informe consolidado…"</div>
+  </div>
+  <div class="stack">
+    <div class="link">↳ contexto nuevo, en paralelo</div>
+    <div class="ctxbox child" style="--c:var(--l-sys)">
+      <h3>Subagente 1 <small>contexto B · vacío al inicio</small></h3>
+      <div class="b" style="--c:var(--l-sys)">system: eres un investigador. Devuelve un resumen.</div>
+      <div class="b" style="--c:var(--l-user)">user: investigar competidor X</div>
+      <div class="b o">assistant → web_search(…) ×6</div>
+      <div class="b" style="--c:var(--l-res)">tool_result ×6 (40k tokens)</div>
+      <div class="b o">assistant: informe X (800 tokens)</div>
+      <p class="note">Los 40k tokens de búsqueda se quedan aquí. Al padre solo llegan 800.</p>
+    </div>
+  </div>
+  <div class="stack">
+    <div class="link">↳ contexto nuevo, en paralelo</div>
+    <div class="ctxbox child" style="--c:var(--l-sys)">
+      <h3>Subagente 2 <small>contexto C · vacío al inicio</small></h3>
+      <div class="b" style="--c:var(--l-sys)">system: eres un investigador. Devuelve un resumen.</div>
+      <div class="b" style="--c:var(--l-user)">user: investigar competidor Y</div>
+      <div class="b o">assistant → web_search(…) ×5</div>
+      <div class="b" style="--c:var(--l-res)">tool_result ×5 (35k tokens)</div>
+      <div class="b o">assistant: informe Y (650 tokens)</div>
+      <p class="note">Arranca frío: no sabe nada de la conversación. Todo lo que necesita va en su tarea.</p>
+    </div>
+  </div>
+</div>
+
+<div class="truths">
+  <div class="truth"><b>Por qué sirven</b><p>Aislan contexto (la basura intermedia no contamina al padre), paralelizan, y permiten prompts de sistema especializados por rol.</p></div>
+  <div class="truth"><b>Qué cuestan</b><p>Cada uno rehace contexto desde cero. Si la tarea necesita saber lo que ya discutiste, hay que escribírselo. Más llamadas, más tokens totales.</p></div>
+  <div class="truth"><b>Cuándo no</b><p>Si el trabajo cabe en la ventana del padre y depende de lo que ya hay en ella, un subagente solo agrega latencia y pérdida de información.</p></div>
+</div>
+</div>
+</section>
+
+<section id="mapa">
+<div class="stack">
+<p class="eyebrow">Capa 7</p>
+<h2>Mapa de todo lo que puede entrar al contexto.</h2>
+<div class="scroller"><table>
+<thead><tr><th>Capa</th><th>Qué es</th><th>Quién la escribe</th><th>Cuándo entra</th><th>Persiste entre llamadas</th></tr></thead>
+<tbody>
+<tr><td><i class="dot" style="background:var(--l-sys)"></i>System prompt</td><td>Rol, reglas, tono, formato. Texto fijo al inicio de la secuencia.</td><td>El operador (Anthropic, tú si usas la API, el producto que montas)</td><td>Siempre, en cada llamada</td><td>Sí, porque se reenvía cada vez</td></tr>
+<tr><td><i class="dot" style="background:var(--l-tools)"></i>Definiciones de herramientas</td><td>Nombre, descripción y esquema JSON de cada función que el modelo puede "pedir". MCP es un estándar para publicarlas.</td><td>El harness, servidores MCP, tú</td><td>Siempre (o diferidas: solo el nombre, y el esquema cuando se busca)</td><td>Sí, se reenvían</td></tr>
+<tr><td><i class="dot" style="background:var(--l-route)"></i>Archivos de guía (CLAUDE.md, AGENTS.md, .cursorrules)</td><td>Instrucciones del proyecto: convenciones, comandos, qué no tocar. Es un trozo del system prompt que vive en el repo.</td><td>Tú y tu equipo</td><td>Al abrir el proyecto, concatenado al sistema</td><td>Sí, mientras dure la sesión</td></tr>
+<tr><td><i class="dot" style="background:var(--l-skill)"></i>Skills (SKILL.md)</td><td>Procedimientos empaquetados. En contexto va solo el índice (nombre + descripción). El archivo completo se lee cuando una tarea coincide.</td><td>Tú, el equipo, Anthropic</td><td>Bajo demanda (progressive disclosure)</td><td>El índice sí; el contenido solo si se cargó</td></tr>
+<tr><td><i class="dot" style="background:var(--l-mem)"></i>Memoria (archivos)</td><td>Perfil, preferencias, notas por tema. Son archivos de texto que un proceso escribe después de cada turno y otro lee al inicio del siguiente.</td><td>Un proceso automático a partir de lo que dijiste</td><td>Al inicio de cada conversación (índice) y bajo demanda (archivo completo)</td><td>Sí, en disco. El modelo no "recuerda": relee.</td></tr>
+<tr><td><i class="dot" style="background:var(--l-hist)"></i>Historial de conversación</td><td>Todos los turnos anteriores, incluidos los resultados de herramientas.</td><td>Tú y el modelo</td><td>Siempre, hasta que se resume o se corta</td><td>Solo dentro de la conversación</td></tr>
+<tr><td><i class="dot" style="background:var(--l-user)"></i>Tu mensaje</td><td>El último turno. Suele ser la parte más pequeña de todo el contexto.</td><td>Tú</td><td>Al final de la secuencia</td><td>Pasa a ser historial</td></tr>
+<tr><td><i class="dot" style="background:var(--l-res)"></i>Resultados de herramientas</td><td>Lo que devolvió una búsqueda, un archivo leído, un comando, un subagente. Texto pegado al contexto por el harness.</td><td>El mundo exterior</td><td>Después de cada ejecución, dentro del loop</td><td>Se acumula. Es lo que llena la ventana.</td></tr>
+</tbody></table></div>
+<p class="note prose">"Context routing" o "context engineering" es el nombre del oficio de decidir, por capa, cuánto de esto entra en cada llamada: siempre, bajo demanda, resumido, o nunca. Un buen harness gasta la mayor parte de su inteligencia ahí, no en el modelo.</p>
+</div>
+</section>
+
+<section id="verdades">
+<div class="stack">
+<p class="eyebrow">Capa 8</p>
+<h2>Lo que no cambia, por más capas que agregues.</h2>
+<div class="truths">
+  <div class="truth"><b>Stateless</b><p>Cada llamada arranca de cero. La continuidad es una ilusión construida reenviando texto. Si no está en el contexto, no existe para el modelo.</p></div>
+  <div class="truth"><b>Probabilístico</b><p>Dos llamadas idénticas pueden dar salidas distintas. Las "decisiones" de un agente son muestreos. Por eso se validan con otra llamada, con código, o con una persona.</p></div>
+  <div class="truth"><b>Todo es texto</b><p>Una "llamada a herramienta" es texto con un formato acordado. El modelo no ejecuta nada: propone. El harness ejecuta.</p></div>
+  <div class="truth"><b>La ventana es finita</b><p>Cada archivo que cargas desplaza algo. La calidad baja antes de llegar al límite. Resumir, aislar en subagentes y cargar bajo demanda son las tres herramientas contra eso.</p></div>
+  <div class="truth"><b>El harness es el producto</b><p>Dos sistemas con el mismo modelo pueden sentirse como agentes totalmente distintos. La diferencia está en qué entra al contexto, en qué orden, y qué pasa con la salida.</p></div>
+  <div class="truth"><b>Los nombres son capas de la misma cosa</b><p>Prompt, skill, memoria, RAG, MCP, subagente: son estrategias de qué texto poner antes de llamar. Si entiendes la llamada, entiendes todo lo demás.</p></div>
+</div>
+</div>
+</section>
+
+</div>
+
+<script>
+// ---------- 1. next token demo ----------
+(function(){
+  const base=[["Bogotá",6.0],["una",2.2],["la",1.8],["Medellín",0.9],["Cali",0.2]];
+  const cands=document.getElementById('cands'),pick=document.getElementById('pick'),
+        temp=document.getElementById('temp'),tempv=document.getElementById('tempv'),tally=document.getElementById('tally');
+  let counts={};
+  function probs(){const t=parseFloat(temp.value);const ex=base.map(([w,l])=>Math.exp(l/t));const s=ex.reduce((a,b)=>a+b,0);return ex.map(e=>e/s)}
+  function render(){const p=probs();cands.innerHTML=base.map(([w],i)=>`<div class="cand"><span>${w}</span><div class="bar"><i style="width:${(p[i]*100).toFixed(1)}%"></i></div><span class="pct">${(p[i]*100).toFixed(1)}%</span></div>`).join('');tempv.textContent=temp.value}
+  function sample(){const p=probs();let r=Math.random(),i=0;while(r>p[i]&&i<p.length-1){r-=p[i];i++}const w=base[i][0];pick.textContent=w;counts[w]=(counts[w]||0)+1;
+    tally.textContent='Muestras: '+Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ×${v}`).join(', ')}
+  temp.addEventListener('input',()=>{counts={};tally.textContent='';render()});
+  document.getElementById('sample').addEventListener('click',sample);
+  document.getElementById('sample10').addEventListener('click',()=>{for(let i=0;i<10;i++)sample()});
+  render();
+})();
+
+// ---------- 2. focus field (knowledge space) ----------
+(function(){
+  const cv=document.getElementById('field'),ctx=cv.getContext('2d');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const el=id=>document.getElementById(id);
+  const REG=[
+   {n:'Derecho',x:.14,y:.2,k:['ley','legal','contrato','jurídic','abogad','law','legal','clausula','cláusula','norma']},
+   {n:'Cocina',x:.86,y:.18,k:['receta','cocin','comida','plato','ingrediente','recipe','cook','food']},
+   {n:'Poesía',x:.2,y:.82,k:['poema','poes','verso','rima','soneto','poem','haiku']},
+   {n:'Código',x:.84,y:.8,k:['código','codigo','code','python','javascript','función','function','bug','api','sql','react','repo']},
+   {n:'Finanzas',x:.5,y:.12,k:['finan','presupuesto','inversi','dólar','dolar','tasa','budget','revenue','mrr','ingreso','costo','precio']},
+   {n:'Medicina',x:.12,y:.5,k:['médic','medic','salud','síntoma','sintoma','paciente','doctor','health']},
+   {n:'Deportes',x:.88,y:.5,k:['fútbol','futbol','partido','gol','equipo','deporte','sport','entrenamiento físico']},
+   {n:'Ciencia',x:.5,y:.9,k:['ciencia','física','fisica','química','quimica','biolog','experimento','science','paper']},
+   {n:'Marketing',x:.42,y:.46,k:['marketing','campaña','campana','post','contenido','marca','audiencia','copy','anuncio','seo','newsletter','brand']},
+   {n:'Educación',x:.6,y:.4,k:['educa','curso','clase','estudiante','universidad','rector','docente','formación','formacion','aprend','técnic','tecnic','escuela','learning','student','teacher','alumno']},
+   {n:'Marca ADA',x:.52,y:.52,k:['ada','nexus','edtech','lxp']},
+   {n:'Ventas B2B',x:.46,y:.58,k:['venta','b2b','cliente','propuesta','pitch','deal','sales','empresa','corporativ','alianza','partner']},
+   {n:'Redes sociales',x:.36,y:.38,k:['linkedin','instagram','tiktok','redes','social','viral','hashtag','facebook','twitter']},
+  ];
+  const SPEC=['tono','formato','en español','español','inglés','ingles','para ','audiencia','cercano','formal','breve','máximo','maximo','palabras','ejemplo','paso a paso','guatemala','colombia','latam','méxico','mexico'];
+  const PTS=[];let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
+  REG.forEach((r,ri)=>{const n=ri>=8?70:48;for(let i=0;i<n;i++){const a=rnd()*6.283,d=Math.sqrt(rnd())*(ri>=8?.07:.11);PTS.push({x:r.x+Math.cos(a)*d,y:r.y+Math.sin(a)*d*1.1,s:.8+rnd()*1.6})}});
+  for(let i=0;i<180;i++)PTS.push({x:rnd(),y:rnd(),s:.6+rnd()});
+  const STEPS=[
+   {t:'(ventana de contexto vacía)',c:'var(--fg2)',cx:.5,cy:.5,rad:1.1,note:'Sin contexto, cualquier continuación es plausible. El modelo "sabe" todo esto a la vez y no apunta a nada.'},
+   {t:'user: "escribe un post"',c:'var(--l-user)',cx:.4,cy:.42,rad:.36,note:'Tu mensaje descarta derecho, cocina y medicina. Pero "post" sigue siendo enorme: cualquier tema, cualquier tono, cualquier red.'},
+   {t:'system: "Eres el CMO de una EdTech B2B en LATAM. Escribes para LinkedIn."',c:'var(--l-sys)',cx:.47,cy:.47,rad:.2,note:'El rol mueve el foco a la intersección de marketing, educación y ventas B2B. Las mismas palabras ahora significan cosas más precisas.'},
+   {t:'SKILL.md ada-nexus-brand: paleta, voz, estructura del post, ejemplos',c:'var(--l-skill)',cx:.51,cy:.51,rad:.1,note:'El skill lleva el foco a una región diminuta y densa: cómo escribe esta marca. Aquí es donde la salida empieza a parecer "experta".'},
+   {t:'memoria: "Santi. Sin guiones conectores. Tono no corporativo. Español colombiano."',c:'var(--l-mem)',cx:.52,cy:.53,rad:.055,note:'La memoria ajusta los últimos grados. La distribución del siguiente token ya está muy concentrada: pocas continuaciones, todas coherentes entre sí.'},
+   {t:'+ 40.000 tokens de resultados de búsqueda sin filtrar sobre cualquier cosa',c:'var(--l-res)',cx:.5,cy:.48,rad:.42,note:'Contexto irrelevante desenfoca. La atención se reparte entre todo lo que hay en la ventana. Más tokens no significan más foco; por eso se cura y se resume.'},
+  ];
+  let i=0,cur={cx:.5,cy:.5,rad:1.1},tgt={...cur},playing=null,userStep=null,last=0;
+  // colores cacheados (se actualizan al cambiar tema)
+  let C={};function hexRgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h.slice(0,6),16);return[(n>>16)&255,(n>>8)&255,n&255]}
+  function refreshColors(){const cs=getComputedStyle(document.documentElement);const g=v=>cs.getPropertyValue(v).trim();
+    C={model:hexRgb(g('--model')),dim:hexRgb(g('--fg2')),mono:g('--mono')}}
+  refreshColors();
+  try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',refreshColors)}catch(e){}
+  new MutationObserver(refreshColors).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+  const rgba=(c,a)=>`rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  // tamaño del canvas
+  let W=0,H=0;
+  function size(){const r=cv.getBoundingClientRect();const w=Math.max(1,Math.round(r.width)),h=Math.max(1,Math.round(r.height));const d=Math.min(devicePixelRatio||1,2);
+    if(w!==W||h!==H||cv.width!==Math.round(w*d)){W=w;H=h;cv.width=Math.round(w*d);cv.height=Math.round(h*d)}return d}
+  try{new ResizeObserver(size).observe(cv)}catch(e){addEventListener('resize',size)}
+  function draw(ts){
+    const d=size();ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,W,H);
+    const dt=Math.min(50,ts-last||16);last=ts;const k=reduce?1:1-Math.pow(0.001,dt/1000);
+    cur.cx+=(tgt.cx-cur.cx)*k;cur.cy+=(tgt.cy-cur.cy)*k;cur.rad+=(tgt.rad-cur.rad)*k;
+    const CX=cur.cx*W,CY=cur.cy*H,R=Math.max(4,cur.rad*Math.min(W,H));
+    const g=ctx.createRadialGradient(CX,CY,0,CX,CY,R);g.addColorStop(0,rgba(C.model,.22));g.addColorStop(.7,rgba(C.model,.08));g.addColorStop(1,rgba(C.model,0));
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(CX,CY,R,0,6.283);ctx.fill();
+    ctx.strokeStyle=rgba(C.model,.55);ctx.lineWidth=1.2;ctx.setLineDash([4,5]);ctx.lineDashOffset=reduce?0:-(ts/60)%9;ctx.beginPath();ctx.arc(CX,CY,R,0,6.283);ctx.stroke();ctx.setLineDash([]);
+    for(const p of PTS){const px=p.x*W,py=p.y*H;const dd=Math.hypot(px-CX,py-CY)/R;const wg=Math.exp(-dd*dd*2.2);
+      ctx.fillStyle=wg>.08?rgba(C.model,.12+wg*.88):rgba(C.dim,.14+wg*.5);ctx.beginPath();ctx.arc(px,py,p.s*(1+wg*.8),0,6.283);ctx.fill()}
+    ctx.font='11px '+C.mono;ctx.textAlign='center';
+    for(const r of REG){const px=r.x*W,py=r.y*H;const dd=Math.hypot(px-CX,py-CY)/R;const wg=Math.exp(-dd*dd*2.2);
+      ctx.fillStyle=wg>.15?rgba(C.model,.5+wg*.5):rgba(C.dim,.5+wg*.5);ctx.fillText(r.n,px,py-14)}
+    requestAnimationFrame(draw);
+  }
+  function meters(rad,c){const reg=Math.min(100,Math.round(Math.min(rad,1)**2*100));
+    el('fregion').style.width=reg+'%';el('fregionv').textContent='~'+reg+'% del espacio';
+    const ent=Math.min(.98,Math.max(.1,Math.sqrt(Math.min(rad,1))));
+    el('fent').style.width=(ent*100)+'%';el('fentv').textContent=ent>.75?'alta: miles de salidas':ent>.45?'media: cientos':ent>.25?'baja: decenas':'muy baja: pocas, coherentes';
+    el('fstep').style.setProperty('--c',c)}
+  function seq(){ // secuencia efectiva: si el usuario fijó su prompt como paso 1, el resto se desplaza hacia su centroide
+    if(!userStep)return STEPS;
+    return STEPS.map((s,k)=>k===0?s:k===1?userStep:{...s,cx:(s.cx+userStep.cx)/2,cy:(s.cy+userStep.cy)/2,rad:Math.min(s.rad,userStep.rad*0.9)})}
+  function show(){const S=seq(),s=S[i];tgt={cx:s.cx,cy:s.cy,rad:s.rad};
+    el('fstep').textContent=(i===0?'':'+ ')+s.t;meters(s.rad,s.c);el('fnote').textContent=s.note;
+    el('fnext').disabled=i>=S.length-1;el('fnext').textContent=i>=S.length-1?'Fin':i===S.length-2?'Agregar ruido':'Agregar contexto'}
+  el('fnext').addEventListener('click',()=>{if(i<STEPS.length-1){i++;show()}});
+  el('freset').addEventListener('click',()=>{clearInterval(playing);playing=null;i=0;show()});
+  el('fplay').addEventListener('click',()=>{clearInterval(playing);i=0;show();playing=setInterval(()=>{if(i>=STEPS.length-1){clearInterval(playing);playing=null;return}i++;show()},2600)});
+
+  // ---- prompt libre ----
+  const ta=el('fprompt'),chips=el('fchips');
+  function analyze(text){const t=' '+text.toLowerCase()+' ';const hits=[];let sx=0,sy=0,sw=0;
+    for(const r of REG){let n=0;for(const k of r.k){if(t.includes(k)){n++;hits.push({w:k.trim(),r:r.n,spec:false})}}if(n){sx+=r.x*n;sy+=r.y*n;sw+=n}}
+    const specs=SPEC.filter(k=>t.includes(k)).map(w=>({w:w.trim(),spec:true}));
+    const words=text.trim().split(/\s+/).filter(Boolean).length;
+    let cx=.5,cy=.5;if(sw){cx=sx/sw;cy=sy/sw}
+    let rad=sw?.55/(1+sw*.7):Math.max(.5,1.1-words*.03);
+    rad=Math.max(.045,rad*Math.pow(.82,specs.length)*Math.pow(.985,Math.min(words,60)));
+    return{cx,cy,rad,hits,specs,words}}
+  let dbt=null;
+  ta.addEventListener('input',()=>{clearTimeout(dbt);dbt=setTimeout(()=>{const txt=ta.value;
+    if(!txt.trim()){chips.innerHTML='<span class="note">Las palabras que coincidan con una región del mapa aparecen aquí. Mientras más específico el prompt, más pequeña la región.</span>';show();return}
+    const a=analyze(txt);tgt={cx:a.cx,cy:a.cy,rad:a.rad};clearInterval(playing);playing=null;
+    el('fstep').textContent='user: "'+txt.slice(0,160)+(txt.length>160?'…':'')+'"';meters(a.rad,'var(--l-user)');
+    el('fnote').textContent=a.hits.length?`Coincide con ${[...new Set(a.hits.map(h=>h.r))].join(', ')}. ${a.specs.length?a.specs.length+' restricción(es) de forma reducen aún más la región.':'Agrega tono, audiencia o formato para cerrar más el foco.'}`:'Ninguna palabra apunta a una región del mapa: el foco se queda en el centro y solo se encoge un poco por la longitud del texto.';
+    chips.innerHTML=[...new Map(a.hits.map(h=>[h.w,h])).values()].map(h=>`<span class="chip">${h.w} → ${h.r}</span>`).join('')+a.specs.map(s=>`<span class="chip spec">${s.w}</span>`).join('')||'<span class="note">Sin coincidencias.</span>';
+    el('fnext').disabled=false;el('fnext').textContent='Agregar contexto';},160)});
+  el('fuse').addEventListener('click',()=>{const txt=ta.value.trim();if(!txt){el('fusenote').textContent='Escribe algo primero.';return}
+    const a=analyze(txt);userStep={t:'user: "'+txt.slice(0,120)+(txt.length>120?'…':'')+'"',c:'var(--l-user)',cx:a.cx,cy:a.cy,rad:a.rad,note:'Tu prompt reemplaza el paso 1. Los pasos siguientes (rol, skill, memoria) ahora cierran el foco alrededor de la región que tu texto señaló.'};
+    el('fusenote').textContent='Listo. Reinicia y avanza la secuencia.';i=1;show()});
+  show();requestAnimationFrame(draw);
+})();
+
+// ---------- 3. context assembler ----------
+const LAYERS=[
+ {id:'sys',name:'System prompt',who:'el operador',tok:3200,c:'var(--l-sys)',on:true,lock:true,
+  sample:'Eres Claude. Responde con precisión. Sigue las reglas de seguridad. Preferencias de formato: …',
+  what:'Texto fijo que define rol, reglas y tono. Es lo primero que ve el modelo en cada llamada.',when:'Siempre. No se puede quitar en la práctica: sin él el modelo no sabe qué es ni qué se espera de él.',note:'Cuando usas la API, tú lo escribes. En un producto como este chat, lo escribe Anthropic, y tus preferencias se inyectan dentro.'},
+ {id:'tools',name:'Definiciones de herramientas',who:'harness y servidores MCP',tok:14000,c:'var(--l-tools)',on:true,
+  sample:'[{"name":"web_search","description":"Busca en la web","input_schema":{"query":"string"}}, {"name":"read_file",…}, {"name":"spawn_agent",…}] × 60',
+  what:'Un catálogo en JSON de funciones que el modelo puede pedir. El modelo solo ve el catálogo; nunca las ejecuta.',when:'Siempre, mientras la herramienta esté habilitada. Suele ser la capa más pesada, por eso muchos harness difieren esquemas: solo el nombre hasta que se buscan.',note:'MCP (Model Context Protocol) es el estándar para que un servidor externo publique estas definiciones.'},
+ {id:'route',name:'Archivo de guía del proyecto',who:'tú y tu equipo',tok:1500,c:'var(--l-route)',on:true,
+  sample:'# CLAUDE.md\n- Usa pnpm, no npm.\n- Los tests viven en /tests.\n- Nunca edites /migrations a mano.',
+  what:'CLAUDE.md, AGENTS.md, .cursorrules: convenciones y reglas del proyecto, en texto plano dentro del repo.',when:'Al abrir el proyecto. Se concatena al system prompt. Es "system prompt versionado con tu código".',note:'Es la forma más barata y efectiva de dirigir un agente: una regla aquí vale más que repetirla en cada mensaje.'},
+ {id:'skillidx',name:'Índice de skills',who:'tú, el equipo, Anthropic',tok:1800,c:'var(--l-skill)',on:true,
+  sample:'skills disponibles:\n- docx: crea documentos Word…\n- ada-nexus-brand: sistema de marca ADA…\n- pdf: …  (solo nombre + descripción)',
+  what:'La lista corta de procedimientos disponibles. Solo nombre y descripción, nunca el contenido.',when:'Siempre. Es barato y permite que el modelo decida cuándo cargar uno.',note:'Esto es "progressive disclosure": el índice siempre, el detalle solo si hace falta.'},
+ {id:'skill',name:'SKILL.md cargado',who:'tú, el equipo, Anthropic',tok:5500,c:'var(--l-skill)',on:false,
+  sample:'# ada-nexus-brand/SKILL.md\nPaleta: navy #0B1F3A, teal #1ABC9C…\nTipografía: …\nReglas de voz: …\nPasos: 1) leer manual 2) …',
+  what:'El contenido completo de un skill. Es un archivo de instrucciones que el modelo leyó con una herramienta, así que entra como resultado de herramienta.',when:'Bajo demanda, cuando la tarea coincide con la descripción del índice.',note:'Un skill no "enseña" nada al modelo. Solo pone instrucciones en el contexto justo antes de que las necesite.'},
+ {id:'mem',name:'Memoria (archivos)',who:'un proceso automático, de lo que dijiste',tok:2400,c:'var(--l-mem)',on:true,
+  sample:'/profile.md\n- [stated] CEO de ADA School…\n/preferences.md\n- [stated] sin guiones conectores…\nlisting: /areas/fundraising.md, /people/…',
+  what:'Archivos de texto: perfil, preferencias, notas por tema. Un proceso los escribe después de cada turno y otro los inyecta al inicio del siguiente.',when:'Al inicio de cada conversación entra el perfil, las preferencias y el índice. Los archivos completos se leen bajo demanda.',note:'El modelo no recuerda. Relee. La "memoria" es un sistema de archivos con un lector al inicio y un escritor al final.'},
+ {id:'hist',name:'Historial de la conversación',who:'tú y el modelo',tok:22000,c:'var(--l-hist)',on:true,
+  sample:'user: ayúdame con el deck…\nassistant: claro, …\nuser: cambia el color…\nassistant: → tool read_file(…)\ntool_result: …\nassistant: listo, …',
+  what:'Todos los turnos previos, incluidas las llamadas a herramientas y sus resultados.',when:'Siempre, hasta que se resume (compactación) o se trunca.',note:'Es la capa que más crece. En conversaciones largas se vuelve la mayoría del contexto y degrada la calidad antes de tocar el límite.'},
+ {id:'user',name:'Tu mensaje',who:'tú',tok:300,c:'var(--l-user)',on:true,lock:true,
+  sample:'user: Quiero que me ayudes a entender cómo funciona la IA generativa y los agentes…',
+  what:'El último turno. Casi siempre la parte más pequeña de todo lo que el modelo lee.',when:'Al final de la secuencia, justo antes de que el modelo empiece a generar.',note:'Por eso "el prompt" como lo imagina la gente es una fracción diminuta del prompt real.'},
+ {id:'res',name:'Resultados de herramientas',who:'el mundo exterior',tok:18000,c:'var(--l-res)',on:false,
+  sample:'tool_result(web_search): [10 resultados, 6.000 tokens]\ntool_result(read_file): [contenido del archivo, 12.000 tokens]',
+  what:'Lo que devolvieron búsquedas, archivos leídos, comandos ejecutados o subagentes. Texto que el harness pega al contexto.',when:'Después de cada ejecución dentro del loop agéntico.',note:'Aquí es donde la ventana se llena de verdad. Los subagentes existen para que esta capa no explote en el contexto principal.'},
+];
+const WINDOW=200000;
+(function(){
+  const L=document.getElementById('layers'),M=document.getElementById('meter'),A=document.getElementById('assembled'),U=document.getElementById('used'),D=document.getElementById('detail');
+  const fmt=n=>n.toLocaleString('es-CO');
+  function render(){
+    L.innerHTML=LAYERS.map(l=>`<button class="layer${l.lock?' locked':''}" data-id="${l.id}" aria-pressed="${l.on}" style="--c:${l.c}"><span class="sw"></span><span class="nm">${l.name}<span class="who">${l.who}</span></span><span class="tk">~${fmt(l.tok)}</span></button>`).join('');
+    const on=LAYERS.filter(l=>l.on);const used=on.reduce((a,l)=>a+l.tok,0);
+    M.innerHTML=on.map(l=>`<i style="background:${l.c};flex-basis:${(l.tok/WINDOW*100).toFixed(2)}%" title="${l.name}"></i>`).join('');
+    U.textContent=`${fmt(used)} / ${fmt(WINDOW)} tokens (${(used/WINDOW*100).toFixed(1)}%)`;
+    A.innerHTML=on.map(l=>`<div class="blk" style="--c:${l.c}"><b>${l.name} · ~${fmt(l.tok)} tok</b>${l.sample.replace(/</g,'&lt;')}</div>`).join('')+`<div class="out">assistant: ▌  ← el modelo genera a partir de aquí</div>`;
+  }
+  L.addEventListener('click',e=>{const b=e.target.closest('.layer');if(!b)return;const l=LAYERS.find(x=>x.id===b.dataset.id);
+    if(!l.lock){l.on=!l.on;render()}
+    D.style.setProperty('--c',l.c);
+    D.innerHTML=`<h3>${l.name}</h3><p>${l.what}</p><dl><dt>quién</dt><dd>${l.who}</dd><dt>cuándo</dt><dd>${l.when}</dd><dt>clave</dt><dd>${l.note}</dd></dl>`;
+  });
+  render();
+})();
+
+// ---------- 3b. window fill ----------
+(function(){
+  const el=id=>document.getElementById(id);const WIN=200000;const fmt=n=>n.toLocaleString('es-CO');
+  const BASE=[{l:'system + tools + memoria',t:19600,c:'var(--l-sys)',fixed:true}];
+  let items,n,calls,reproc,lost,gone;
+  const TURNS=[
+   ['user: revisa la carpeta de propuestas',300],['tool_result: ls → 14 archivos',900],['tool_result: read propuesta_galileo.docx',6200],['assistant: resumen + 3 hallazgos',700],
+   ['user: compara con la de INTECAP',250],['tool_result: read propuesta_intecap.docx',5800],['assistant: tabla comparativa',900],
+   ['user: busca precios de competidores',200],['tool_result: web_search ×3',7400],['assistant: precios y fuentes',800],
+   ['user: arma el deck',150],['tool_result: read SKILL.md ada-commercial-deck',5500],['assistant → write_file deck.pptx',400],['tool_result: ok',40],
+  ];
+  function reset(){items=[...BASE];n=0;calls=1;reproc=19600;lost=0;gone=[];render();el('wnote').textContent='Agrega turnos hasta pasar el 70%. Ahí se habilitan las tres estrategias.'}
+  function used(){return items.reduce((a,x)=>a+x.t,0)}
+  function render(){const u=used(),pct=u/WIN*100;
+    el('wmeter').innerHTML=items.map(x=>`<i style="background:${x.c};flex-basis:${(x.t/WIN*100).toFixed(2)}%"></i>`).join('');
+    el('wused').textContent=`${fmt(u)} / ${fmt(WIN)} (${pct.toFixed(0)}%)`;
+    const q=pct<40?1:pct<70?1-(pct-40)/30*.35:pct<100?.65-(pct-70)/30*.5:0;
+    el('wq').style.width=(q*100)+'%';el('wqv').textContent=pct>=100?'llamada rechazada':q>.9?'alta':q>.65?'empieza a degradarse':q>.3?'baja: se pierde el medio':'muy baja';
+    el('wlist').innerHTML=items.map(x=>`<div class="wi${x.sum?' sum':''}${x.ref?' ref':''}" style="--c:${x.c}"><span>${x.l}</span><span class="tk">${fmt(x.t)}</span></div>`).join('')+gone.map(x=>`<div class="wi gone" style="--c:${x.c}"><span>${x.l}</span><span class="tk">0</span></div>`).join('');
+    el('wcalls').textContent=calls;el('wreproc').textContent=fmt(reproc);el('wlost').textContent=lost;
+    const can=pct>70;['wtrunc','wcomp','woff'].forEach(id=>el(id).disabled=!can);
+    el('wadd').disabled=n>=TURNS.length*3;}
+  function add(){const [l,t]=TURNS[n%TURNS.length];const c=l.startsWith('user')?'var(--l-user)':l.startsWith('tool')?'var(--l-res)':'var(--model)';
+    items.push({l:l+(n>=TURNS.length?' (bis)':''),t,c});n++;calls++;reproc+=used();render();
+    const pct=used()/WIN*100;el('wnote').textContent=pct>=100?'La ventana se desbordó: la próxima llamada falla hasta que el harness quite algo.':pct>70?'Ya estás en zona de degradación. Elige una estrategia.':'Cada turno reenvía todo lo anterior. Mira el contador de tokens reprocesados.';}
+  function trunc(){let keep=[items[0]];const rest=items.slice(1);let drop=[];while(rest.length&&keep.reduce((a,x)=>a+x.t,0)+rest.reduce((a,x)=>a+x.t,0)>WIN*.5){drop.push(rest.shift())}
+    gone=gone.concat(drop);lost+=drop.filter(x=>!x.sum&&!x.ref).length;items=keep.concat(rest);render();
+    el('wnote').textContent=`Se borraron ${drop.length} turnos viejos. Si alguno tenía un dato que necesitas, desapareció del contexto para siempre.`}
+  function comp(){const old=items.slice(1,-2),tail=items.slice(-2);if(old.length<2){el('wnote').textContent='Hay poco que resumir todavía.';return}
+    const t=Math.max(2500,Math.round(old.reduce((a,x)=>a+x.t,0)*.06));
+    items=[items[0],{l:'resumen (escrito por el modelo): decisiones, archivos tocados, estado actual',t,c:'var(--l-hist)',sum:true},...tail];
+    calls++;reproc+=used()+old.reduce((a,x)=>a+x.t,0);lost+=Math.round(old.filter(x=>!x.sum).length*.6);render();
+    el('wnote').textContent=`Una llamada extra resumió ${old.length} turnos en ~${fmt(t)} tokens. Se conservan decisiones y estado; cifras exactas y matices se pierden.`}
+  function off(){let moved=0;items=items.map(x=>{if(x.c==='var(--l-res)'&&x.t>1000){moved++;return{l:x.l.replace('tool_result: ','ref → archivo: ')+'  (relee con read_file)',t:220,c:'var(--l-res)',ref:true}}return x});
+    if(!moved){el('wnote').textContent='No hay resultados grandes que descargar.';render();return}
+    calls++;reproc+=used();render();
+    el('wnote').textContent=`${moved} resultados grandes se escribieron a disco y dejaron una referencia de ~220 tokens. Nada se perdió: si el modelo necesita el detalle, lo relee.`}
+  el('wadd').addEventListener('click',add);el('wreset').addEventListener('click',reset);
+  el('wtrunc').addEventListener('click',trunc);el('wcomp').addEventListener('click',comp);el('woff').addEventListener('click',off);
+  reset();
+})();
+
+// ---------- 3. agent loop ----------
+(function(){
+  const STEPS=[
+   {who:'u',t:'Usuario',p:'"Busca el precio del dólar hoy y guárdalo en un archivo."',ctx:[{l:'user',w:300,c:'var(--l-user)'}]},
+   {who:'m',t:'Llamada 1',p:'El modelo lee todo el contexto y genera texto. El texto tiene la forma de una llamada a herramienta.',code:'assistant → web_search({"query":"precio dólar hoy"})',call:true,ctx:[{l:'assistant: web_search',w:120,c:'var(--model)'}]},
+   {who:'h',t:'Harness',p:'El programa externo detecta la forma, ejecuta la búsqueda de verdad, y pega el resultado al contexto. El modelo no hizo nada aquí.',code:'tool_result: "USD/COP 4.187 (23 oct)… [8 resultados]"',tool:true,ctx:[{l:'tool_result 6.000',w:6000,c:'var(--l-res)'}]},
+   {who:'m',t:'Llamada 2',p:'Nueva llamada, desde cero, con todo lo anterior reenviado. El modelo "ve" el resultado y vuelve a generar.',code:'assistant → write_file({"path":"dolar.txt","content":"4.187"})',call:true,ctx:[{l:'assistant: write_file',w:150,c:'var(--model)'}]},
+   {who:'h',t:'Harness',p:'Ejecuta la escritura y pega la confirmación.',code:'tool_result: "ok, 9 bytes"',tool:true,ctx:[{l:'tool_result',w:40,c:'var(--l-res)'}]},
+   {who:'m',t:'Llamada 3',p:'El modelo genera texto sin forma de herramienta. El harness no encuentra nada que ejecutar y el loop termina.',code:'assistant: "Listo. Guardé 4.187 COP en dolar.txt."',call:true,done:true,ctx:[{l:'assistant: respuesta',w:200,c:'var(--model)'}]},
+  ];
+  const BASE=[{l:'system 3.2k',w:3200,c:'var(--l-sys)'},{l:'tools 14k',w:14000,c:'var(--l-tools)'},{l:'memoria 2.4k',w:2400,c:'var(--l-mem)'}];
+  const S=document.getElementById('steps'),strip=document.getElementById('ctxstrip'),N=document.getElementById('next'),R=document.getElementById('reset');
+  let i=-1;
+  const lbl={u:'usuario',m:'modelo',h:'harness'};
+  function render(){
+    S.innerHTML=STEPS.map((s,k)=>`<div class="step${k<=i?' on':''}${k===i?' cur':''}"><span class="who ${s.who}">${lbl[s.who]}</span><div><p><strong>${s.t}.</strong> ${s.p}</p>${s.code?`<code>${s.code}</code>`:''}</div></div>`).join('');
+    let calls=0,tools=0,ctx=[...BASE];
+    for(let k=0;k<=i;k++){if(STEPS[k].call)calls++;if(STEPS[k].tool)tools++;ctx.push(...STEPS[k].ctx)}
+    const tot=ctx.reduce((a,c)=>a+c.w,0);
+    document.getElementById('ncalls').textContent=calls;document.getElementById('ntools').textContent=tools;
+    document.getElementById('ntok').textContent=tot.toLocaleString('es-CO');
+    strip.innerHTML=ctx.map(c=>`<i data-l="${c.l}" style="--c:${c.c};--w:${Math.max(7,c.w/tot*100).toFixed(1)}%"></i>`).join('');
+    N.disabled=i>=STEPS.length-1;N.textContent=i>=STEPS.length-1?'Loop terminado':'Siguiente paso';
+  }
+  N.addEventListener('click',()=>{if(i<STEPS.length-1){i++;render()}});
+  R.addEventListener('click',()=>{i=-1;render()});
+  render();
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADA Harness</title>
+<style>
+:root{--bg:#eef1f6;--bg2:#fff;--fg:#141a26;--fg2:#525c6e;--line:#cfd6e2;--model:#d9641e;
+  --l-sys:#2f5fa8;--l-tools:#1f8a7a;--l-mem:#7a4bb8;--l-route:#2c7fb8;--l-skill:#b03a7c;--l-hist:#6b7a94;--l-user:#1a9a4a;--l-res:#b88a1f;
+  --mono:ui-monospace,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1420;--bg2:#161d2b;--fg:#e8ecf4;--fg2:#a2acbe;--line:#2a3345;--model:#f08a3e;
+  --l-sys:#6a97e0;--l-tools:#45c2ad;--l-mem:#b48ae8;--l-route:#63b2e6;--l-skill:#e876b3;--l-hist:#8f9db8;--l-user:#4fd27f;--l-res:#e2b54a;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif;display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:auto 1fr}
+@media (max-width:860px){body{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}aside{max-height:40vh}}
+header{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--bg2)}
+header b{font-size:16px}
+header a,header button{font:inherit;font-size:13px;color:var(--fg2);background:none;border:1px solid var(--line);border-radius:6px;padding:4px 10px;text-decoration:none;cursor:pointer}
+header .sp{flex:1}
+main{display:flex;flex-direction:column;min-width:0}
+#log{flex:1;overflow:auto;padding:20px 18px;display:flex;flex-direction:column;gap:14px}
+.msg{max-width:72ch;white-space:pre-wrap;word-break:break-word}
+.msg.u{align-self:flex-end;background:var(--bg2);border:1px solid var(--line);border-radius:12px 12px 2px 12px;padding:10px 14px}
+.msg.a{align-self:flex-start;border-left:3px solid var(--model);padding:4px 14px}
+.msg.s{align-self:center;font-size:12px;color:var(--fg2);font-family:var(--mono)}
+form{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line);background:var(--bg2)}
+textarea{flex:1;font:inherit;resize:none;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg);color:var(--fg);min-height:44px;max-height:160px}
+button.send{font:inherit;font-weight:600;background:var(--model);color:#fff;border:0;border-radius:8px;padding:0 18px;cursor:pointer}
+button.send:disabled{opacity:.5}
+aside{border-left:1px solid var(--line);background:var(--bg2);padding:16px;overflow:auto;font-size:13px;display:grid;gap:14px;align-content:start}
+@media (max-width:860px){aside{border-left:0;border-top:1px solid var(--line)}}
+aside h2{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg2);margin:0;font-family:var(--mono)}
+.meter{height:22px;border:1px solid var(--line);border-radius:6px;overflow:hidden;display:flex;background:var(--bg)}
+.meter i{display:block;height:100%}
+.layers{display:grid;gap:4px;font-family:var(--mono);font-size:12px}
+.layer{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:center}
+.layer i{width:10px;height:10px;border-radius:3px;background:var(--c)}
+.layer span:last-child{color:var(--fg2);font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.stat{border:1px solid var(--line);border-radius:8px;padding:8px}
+.stat b{display:block;font-size:20px;line-height:1}
+.stat span{font-size:11px;color:var(--fg2)}
+.events{display:grid;gap:4px;font-family:var(--mono);font-size:11.5px;color:var(--fg2)}
+.events div{border-left:2px solid var(--line);padding-left:8px}
+.events .sub{border-color:var(--l-sys)}.events .cmp{border-color:var(--l-hist)}.events .tool{border-color:var(--l-res)}
+.empty{color:var(--fg2)}
+</style>
+</head>
+<body>
+<header>
+  <b>ADA Harness</b><span style="color:var(--fg2);font-size:13px">chat mínimo + inspector de contexto</span>
+  <span class="sp"></span>
+  <a href="/docs/anatomia-de-un-agente.html" target="_blank">Explicador</a>
+  <button id="reset" type="button">Nueva conversación</button>
+</header>
+
+<main>
+  <div id="log"><div class="msg s">Cada mensaje es un turno. Un turno puede ser varias llamadas al modelo. Mira el panel de la derecha.</div></div>
+  <form id="f">
+    <textarea id="t" placeholder="Escribe. Shift+Enter para salto de línea." rows="1"></textarea>
+    <button class="send" id="send" type="submit">Enviar</button>
+  </form>
+</main>
+
+<aside>
+  <div>
+    <h2>Última llamada · ventana de contexto</h2>
+    <div class="meter" id="meter"></div>
+    <div id="used" class="empty" style="font-family:var(--mono);font-size:11px;margin-top:4px">sin llamadas aún</div>
+  </div>
+  <div><h2>Capas</h2><div class="layers" id="layers"><div class="empty">Qué entró al contexto y cuánto pesó, por capa.</div></div></div>
+  <div class="stats">
+    <div class="stat"><b id="calls">0</b><span>llamadas (turno)</span></div>
+    <div class="stat"><b id="tools">0</b><span>herramientas</span></div>
+    <div class="stat"><b id="intok">0</b><span>tokens de entrada reales</span></div>
+  </div>
+  <div><h2>Eventos del loop</h2><div class="events" id="events"><div class="empty">Herramientas, compactaciones y subagentes aparecen aquí.</div></div></div>
+</aside>
+
+<script>
+const BUDGET=120000;
+const COLORS={system:'--l-sys',projectGuide:'--l-route',skillsIndex:'--l-skill',memoryCore:'--l-mem',memoryIndex:'--l-mem',toolDefinitions:'--l-tools','history (user)':'--l-user','history (assistant)':'--model',toolResults:'--l-res'};
+const $=id=>document.getElementById(id);
+const log=$('log'),t=$('t'),send=$('send');
+const session='s'+Math.random().toString(36).slice(2);
+function add(cls,text){const d=document.createElement('div');d.className='msg '+cls;d.textContent=text;log.appendChild(d);log.scrollTop=log.scrollHeight;return d}
+function inspect(tr){
+  if(!tr.lastContext)return;
+  const L=tr.lastContext.layers;const tot=L.reduce((a,l)=>a+l.tokens,0);
+  $('meter').innerHTML=L.map(l=>`<i style="background:var(${COLORS[l.name.split(' (')[0]]||COLORS[l.name]||'--fg2'});flex:0 0 ${(l.tokens/BUDGET*100).toFixed(2)}%" title="${l.name}"></i>`).join('');
+  $('used').textContent=`~${tot.toLocaleString('es-CO')} / ${BUDGET.toLocaleString('es-CO')} tokens estimados (${(tot/BUDGET*100).toFixed(1)}%)`;
+  $('layers').innerHTML=L.map(l=>`<div class="layer" style="--c:var(${COLORS[l.name.split(' (')[0]]||COLORS[l.name]||'--fg2'})"><i></i><span>${l.name}</span><span>~${l.tokens.toLocaleString('es-CO')}</span></div>`).join('');
+  $('calls').textContent=tr.calls;$('tools').textContent=tr.tools.length;
+  $('intok').textContent=(tr.lastContext.usage?.input_tokens??0).toLocaleString('es-CO');
+  const ev=[];
+  for(const x of tr.tools)ev.push(`<div class="tool">${x.agent?'['+x.agent+'] ':''}${x.name}(${JSON.stringify(x.input).slice(0,60)}) → ~${x.tokens} tok</div>`);
+  for(const e of tr.events)ev.push(e.type==='compact'?`<div class="cmp">compactación: ${e.droppedMessages} mensajes → resumen de ~${e.summaryTokens} tok</div>`:`<div class="sub">subagente ${e.agent}: ${e.calls} llamadas, ${e.tools} herramientas</div>`);
+  $('events').innerHTML=ev.join('')||'<div class="empty">Sin herramientas en este turno.</div>';
+}
+$('f').addEventListener('submit',async e=>{e.preventDefault();const msg=t.value.trim();if(!msg)return;
+  add('u',msg);t.value='';send.disabled=true;const w=add('s','pensando…');
+  try{const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session,message:msg})});
+    const d=await r.json();w.remove();if(d.error)add('s','error: '+d.error);else{add('a',d.text);inspect(d.trace)}}
+  catch(err){w.textContent='error: '+err.message}
+  send.disabled=false;t.focus()});
+t.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('f').requestSubmit()}});
+t.addEventListener('input',()=>{t.style.height='auto';t.style.height=Math.min(160,t.scrollHeight)+'px'});
+$('reset').addEventListener('click',async()=>{await fetch('/api/reset',{method:'POST'});location.reload()});
+</script>
+</body>
+</html>
