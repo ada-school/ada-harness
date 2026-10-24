@@ -10,6 +10,15 @@
   "scripts": {
     "start": "node src/server.js",
     "cli": "node src/harness.js",
-    "test": "node --test"
+    "test": "node tests/run.js",
+    "test:unit": "node tests/run.js unit",
+    "test:providers": "node tests/run.js providers",
+    "test:integration": "node tests/run.js integration",
+    "typecheck": "tsc -p jsconfig.json",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "6.0.3"
   }
 }

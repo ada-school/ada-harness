@@ -19,6 +19,7 @@ const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const clave = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 let secuencia = 0;
 
+/** @satisfies {import("../types.js").Provider} */
 export const gemini = {
   name: "gemini",
   label: "Gemini",
@@ -87,13 +88,17 @@ export function haciaGemini(messages) {
   });
 }
 
-// Respuesta de Gemini -> { content: [bloques internos], stop_reason, usage }.
+/**
+ * Respuesta de Gemini -> formato interno.
+ * @returns {import("../types.js").ModelResponse}
+ */
 export function desdeGemini(data) {
   const cand = data.candidates?.[0];
   if (!cand) {
     const motivo = data.promptFeedback?.blockReason || "sin candidatos";
     throw new Error(`Gemini no respondió: ${motivo}`);
   }
+  /** @type {import("../types.js").Block[]} */
   const content = [];
   for (const p of cand.content?.parts || []) {
     const guardado = p.thoughtSignature ? { _gemini: { thoughtSignature: p.thoughtSignature } } : {};
@@ -116,7 +121,7 @@ export function desdeGemini(data) {
   }
   const pidioHerramienta = content.some((b) => b.type === "tool_use");
   const fin = cand.finishReason;
-  if (!pidioHerramienta && !content.some((b) => b.text) && fin && fin !== "STOP" && fin !== "MAX_TOKENS") {
+  if (!pidioHerramienta && !content.some((b) => b.type === "text" && b.text) && fin && fin !== "STOP" && fin !== "MAX_TOKENS") {
     throw new Error(`Gemini terminó con ${fin}${cand.finishMessage ? `: ${cand.finishMessage}` : ""}`);
   }
   const u = data.usageMetadata || {};

@@ -5,6 +5,7 @@
 
 const API = "https://api.anthropic.com/v1/messages";
 
+/** @satisfies {import("../types.js").Provider} */
 export const anthropic = {
   name: "anthropic",
   label: "Claude",

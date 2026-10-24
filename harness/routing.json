@@ -12,7 +12,7 @@
     "memoryIndex":   { "load": "always",    "source": "harness/memory/areas" },
     "memoryContent": { "load": "on-demand", "via": "read_memory" },
     "history":       { "load": "always",    "compact": true },
-    "toolResults":   { "load": "always",    "offloadAbove": 6000, "offloadTo": "workspace/.context" }
+    "toolResults":   { "load": "always",    "offloadAbove": 6000, "offloadTo": ".context" }
   },
   "agents": {
     "researcher": { "tools": ["list_dir", "read_file", "web_fetch"], "maxToolLoops": 12 },

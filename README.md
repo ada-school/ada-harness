@@ -146,27 +146,47 @@ ada-harness/
 │   │   └── reviewer.md            System prompt del subagente revisor.
 │   └── tools/
 │       └── index.js               Cada herramienta: definición JSON + función que la ejecuta.
-├── src/
-│   ├── context.js                 Ensambla la ventana y reporta tokens por capa.
-│   ├── harness.js                 El loop: llamar, ejecutar, descargar, compactar, subagentes.
+├── src/                           El motor. Cada archivo tiene un solo trabajo.
+│   ├── harness.js                 El loop: llamar, ejecutar herramientas, subagentes, turn().
+│   ├── context.js                 Ensambla la ventana por capas y estima tokens.
+│   ├── window.js                  La ventana llena: presupuesto, compact(), maybeOffload().
+│   ├── config.js                  Rutas del repo, archivos protegidos, carga de .env.
+│   ├── types.js                   Tipos en JSDoc: mensajes, bloques, proveedor, trace.
 │   ├── providers/
 │   │   ├── index.js               Registro y elección del proveedor.
 │   │   ├── anthropic.js           Claude: el formato interno ya es el suyo.
 │   │   ├── gemini.js              Gemini: traduce a generateContent y guarda las firmas.
 │   │   └── ollama.js              Ollama: detecta la instancia local y sus modelos con herramientas.
-│   ├── env.js                     Carga .env, para el servidor y para la terminal.
-│   └── server.js                  HTTP mínimo: sirve app/ y docs/, expone la API del chat.
-├── app/
-│   └── index.html                 Chat minimalista con inspector de contexto.
+│   ├── http/
+│   │   ├── static.js              Qué archivos sirve: app/ y docs/, nada más.
+│   │   └── api.js                 /api/providers, /api/chat, /api/reset y las sesiones.
+│   ├── server.js                  Junta static.js y api.js en un servidor HTTP.
+│   └── cli.js                     El mismo turno desde la terminal.
+├── app/                           El chat. HTML, CSS y módulos ES nativos: sin compilar.
+│   ├── index.html                 Solo estructura.
+│   ├── styles.css                 Colores por capa, iguales a los del explicador.
+│   └── js/
+│       ├── main.js                Conecta todo: eventos y estado de la pantalla.
+│       ├── api.js                 Las tres llamadas al servidor.
+│       ├── selector.js            Opciones del selector de modelo (lógica pura + render).
+│       ├── inspector.js           Qué muestra el inspector (lógica pura + render).
+│       ├── chat.js                La conversación.
+│       └── format.js              Números y color de cada capa.
 ├── docs/
 │   ├── Anatomía de un Agente.html    El explicador interactivo.
+│   ├── decisiones/                    Por qué el proyecto es como es (ADR).
 │   └── taller/                        Material del taller: plantilla, ejemplo resuelto y descuentos.js.
-├── tests/
-│   ├── providers.test.js          Pruebas de Claude y Gemini, sin red: npm test.
-│   └── ollama.test.js             Pruebas de Ollama contra un servidor falso.
+├── tests/                         57 pruebas, sin claves ni red externa. Ver sección 9.
+│   ├── unit/                      Herramientas, contexto, ventana, chat, HTTP y terminal.
+│   ├── providers/                 Claude y Gemini con fetch simulado; Ollama con un servidor falso.
+│   ├── integration/               El servidor real de punta a punta.
+│   ├── helpers/                   fetch falso, Ollama falso, workspace temporal.
+│   └── run.js                     Corre una capa o todas.
 ├── workspace/                     Donde el agente lee, escribe y ejecuta. Nada fuera de aquí.
+├── .github/workflows/ci.yml       Tipos y pruebas en Node 18, 20 y 22 en cada push.
 ├── .env.example                   Claves de Claude y Gemini, Ollama, modelos, puerto.
-├── package.json                   Sin dependencias.
+├── jsconfig.json                  Configuración de la revisión de tipos.
+├── package.json                   Cero dependencias para correr. TypeScript solo para revisar tipos.
 └── LICENSE                        MIT.
 ```
 

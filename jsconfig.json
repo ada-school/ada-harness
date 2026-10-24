@@ -1,0 +1,21 @@
+{
+  // Revisión de tipos sin compilar: el código sigue siendo JavaScript y corre tal cual con Node.
+  // Los tipos viven en JSDoc (ver src/types.js). Correr: npm run typecheck
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "checkJs": true,
+    "allowJs": true,
+    "noEmit": true,
+    "strict": true,
+    // Dos concesiones para que el JSDoc no tape el código: parámetros sin anotar quedan como
+    // any, y en un catch se puede leer e.message sin un chequeo previo.
+    "noImplicitAny": false,
+    "useUnknownInCatchVariables": false,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.js", "harness/tools/**/*.js", "app/js/**/*.js", "tests/**/*.js"]
+}

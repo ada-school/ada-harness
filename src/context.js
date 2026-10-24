@@ -4,31 +4,45 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { ROOT, paths } from "./config.js";
 
-export const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+export { ROOT };
 
-// Estimación barata: ~4 caracteres por token en español e inglés mezclados.
-// Para cifras exactas usa el endpoint count_tokens de la API.
+/**
+ * Estimación barata: ~4 caracteres por token en español e inglés mezclados.
+ * Para cifras exactas, el inspector muestra al lado los tokens reales que devuelve la API.
+ * @param {unknown} s
+ */
 export const estimateTokens = (s) => Math.ceil((typeof s === "string" ? s : JSON.stringify(s)).length / 4);
 
+/** @returns {Promise<import("./types.js").Routing>} */
 export async function loadRouting() {
-  return JSON.parse(await fs.readFile(path.join(ROOT, "harness", "routing.json"), "utf8"));
+  return JSON.parse(await fs.readFile(paths.routing, "utf8"));
 }
 
+/** @param {string} p ruta relativa a la raíz del repo */
 async function readIfExists(p) {
   try { return await fs.readFile(path.join(ROOT, p), "utf8"); } catch { return ""; }
 }
 
-function frontmatter(txt) {
+/**
+ * Lee el frontmatter YAML simple (una clave por línea). Acepta saltos de línea de Windows y BOM.
+ * @param {string} txt
+ * @returns {Record<string, string>}
+ */
+export function frontmatter(txt) {
   const m = txt.replace(/^\uFEFF/, "").match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  /** @type {Record<string, string>} */
   const out = {};
   if (m) for (const line of m[1].split(/\r?\n/)) { const i = line.indexOf(":"); if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim(); }
   return out;
 }
 
-// Índice de skills: solo name + description. El cuerpo entra con load_skill.
-async function skillsIndex(dir) {
+/**
+ * Índice de skills: solo name + description. El cuerpo entra con load_skill.
+ * @param {string} dir relativa a la raíz
+ */
+export async function skillsIndex(dir) {
   const abs = path.join(ROOT, dir);
   let entries = [];
   try { entries = await fs.readdir(abs, { withFileTypes: true }); } catch { return ""; }
@@ -43,8 +57,11 @@ async function skillsIndex(dir) {
   return lines.length ? "Skills disponibles (carga el contenido con load_skill cuando la tarea coincida):\n" + lines.join("\n") : "";
 }
 
-// Índice de memoria: ruta + description de cada archivo en areas/.
-async function memoryIndex(dir) {
+/**
+ * Índice de memoria: ruta + description de cada archivo en areas/.
+ * @param {string} dir relativa a la raíz
+ */
+export async function memoryIndex(dir) {
   const abs = path.join(ROOT, dir);
   let files = [];
   try { files = (await fs.readdir(abs)).filter((f) => f.endsWith(".md")); } catch { return ""; }
@@ -56,8 +73,13 @@ async function memoryIndex(dir) {
   return lines.length ? "Memoria por tema (lee con read_memory si la conversación lo toca):\n" + lines.join("\n") : "Memoria por tema: (vacía)";
 }
 
-// Construye el system prompt. Cada bloque es una capa; el reporte dice cuánto pesa cada una.
+/**
+ * Construye el system prompt. Cada bloque es una capa; el reporte dice cuánto pesa cada una.
+ * @param {{ routing: import("./types.js").Routing, agentName?: string | null }} args
+ * @returns {Promise<{ system: string, layers: import("./types.js").Layer[] }>}
+ */
 export async function assembleSystem({ routing, agentName = null }) {
+  /** @type {{ name: string, tokens: number, text: string }[]} */
   const layers = [];
   const add = (name, text) => { if (text && text.trim()) layers.push({ name, tokens: estimateTokens(text), text }); };
 
@@ -79,14 +101,18 @@ export async function assembleSystem({ routing, agentName = null }) {
   return { system, layers: layers.map(({ name, tokens }) => ({ name, tokens })) };
 }
 
-// Reporte del historial: cuánto pesa cada tipo de bloque en messages.
+/**
+ * Reporte del historial: cuánto pesa cada tipo de bloque en messages.
+ * @param {import("./types.js").Message[]} messages
+ * @returns {import("./types.js").Layer[]}
+ */
 export function historyReport(messages) {
   const acc = { user: 0, assistant: 0, toolResults: 0 };
   for (const m of messages) {
     if (typeof m.content === "string") { acc[m.role] += estimateTokens(m.content); continue; }
     for (const b of m.content) {
       if (b.type === "tool_result") acc.toolResults += estimateTokens(b.content ?? "");
-      else acc[m.role] += estimateTokens(b.text ?? b.input ?? "");
+      else acc[m.role] += estimateTokens(b.type === "text" ? b.text : b.input ?? "");
     }
   }
   return [

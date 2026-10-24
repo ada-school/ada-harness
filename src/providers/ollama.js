@@ -17,7 +17,13 @@
 // Referencias: docs/capabilities/tool-calling.mdx, docs/context-length.mdx y docs/api.md
 // del repositorio github.com/ollama/ollama.
 
+/**
+ * @typedef {{ name: string, tools: boolean, remote: boolean, params: string, context: number | null }} ModeloOllama
+ * @typedef {{ disponible: boolean, modelos: ModeloOllama[], error?: string }} EstadoOllama
+ */
+
 const TTL_MS = 5000;
+/** @type {{ host: string | null, at: number, estado: EstadoOllama | null }} */
 let cache = { host: null, at: 0, estado: null };
 let secuencia = 0;
 
@@ -36,10 +42,15 @@ async function pedir(ruta, opciones = {}, timeoutMs = 1500) {
   return data;
 }
 
-// Detecta Ollama y sus modelos. Resultado cacheado unos segundos.
+/**
+ * Detecta Ollama y sus modelos. Resultado cacheado unos segundos.
+ * @param {{ forzar?: boolean }} [opciones]
+ * @returns {Promise<EstadoOllama>}
+ */
 export async function detectar({ forzar = false } = {}) {
   const h = host();
-  if (!forzar && cache.host === h && Date.now() - cache.at < TTL_MS) return cache.estado;
+  if (!forzar && cache.estado && cache.host === h && Date.now() - cache.at < TTL_MS) return cache.estado;
+  /** @type {EstadoOllama} */
   let estado;
   try {
     const tags = await pedir("/api/tags", {}, 800);
@@ -74,6 +85,7 @@ const conHerramientas = () => (cache.estado?.modelos || []).filter((m) => m.tool
 // Preferimos un modelo local; la nube solo si no hay ninguno local con herramientas.
 const elegido = () => conHerramientas().find((m) => !m.remote) || conHerramientas()[0];
 
+/** @satisfies {import("../types.js").Provider} */
 export const ollama = {
   name: "ollama",
   label: "Ollama",
@@ -87,6 +99,7 @@ export const ollama = {
     return m?.context ? Math.min(numCtx(), m.context) : numCtx();
   },
   status: () => {
+    /** @type {EstadoOllama} */
     const e = cache.estado || { disponible: false, modelos: [] };
     return {
       host: host(),
@@ -161,7 +174,10 @@ export function haciaOllama(system, messages) {
   return out;
 }
 
-// Respuesta de Ollama -> formato interno.
+/**
+ * Respuesta de Ollama -> formato interno.
+ * @returns {import("../types.js").ModelResponse}
+ */
 export function desdeOllama(data) {
   const msg = data.message || {};
   // algunos modelos viejos mezclan el razonamiento en el texto; lo separamos
@@ -169,6 +185,7 @@ export function desdeOllama(data) {
   let pensamiento = msg.thinking || "";
   texto = texto.replace(/<think>([\s\S]*?)<\/think>/g, (_, t) => { pensamiento += t; return ""; }).trim();
 
+  /** @type {(import("../types.js").TextBlock | import("../types.js").ToolUseBlock)[]} */
   const content = [];
   if (texto) content.push({ type: "text", text: texto });
   for (const tc of msg.tool_calls || []) {

@@ -7,21 +7,47 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
+import { paths, isProtected } from "../../src/config.js";
 
 const exec = promisify(execFile);
-const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const WORKSPACE = path.join(ROOT, "workspace");
-const MEMORY = path.join(ROOT, "harness", "memory");
-const SKILLS = path.join(ROOT, "harness", "skills");
 
-// Nada sale de la carpeta permitida.
-function inside(base, p) {
+/**
+ * Resuelve `p` dentro de `base` y falla si se sale. Compara carpetas completas, no prefijos de
+ * texto: "workspace-otro" empieza con "workspace" pero está afuera.
+ * @param {string} base carpeta permitida, absoluta
+ * @param {string} p ruta pedida por el modelo
+ */
+export function inside(base, p) {
   const abs = path.resolve(base, p);
-  if (!abs.startsWith(base)) throw new Error(`Ruta fuera de ${path.basename(base)}/: ${p}`);
+  const rel = path.relative(base, abs);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(`Ruta fuera de ${path.basename(base)}/: ${p}`);
   return abs;
 }
 
+/**
+ * Rutas que empiezan con "/" se leen desde la raíz del repo; el resto, desde el workspace.
+ * Los secretos (.env) y la carpeta .git nunca se leen: lo que el modelo lee viaja a su proveedor.
+ * Vale también dentro del workspace, que con ADA_WORKSPACE puede ser un proyecto real.
+ * @param {string} p
+ */
+export function resolveReadable(p) {
+  const base = p.startsWith("/") ? paths.root : paths.workspace;
+  const abs = inside(base, p.replace(/^\/+/, "") || ".");
+  if (isProtected(path.relative(base, abs))) throw new Error(`Archivo protegido: ${p}`);
+  return abs;
+}
+
+/**
+ * Dónde puede escribir el agente: dentro del workspace y nunca sobre .env ni .git.
+ * @param {string} p
+ */
+export function resolveWritable(p) {
+  const abs = inside(paths.workspace, p);
+  if (isProtected(path.relative(paths.workspace, abs))) throw new Error(`Archivo protegido: ${p}`);
+  return abs;
+}
+
+/** @type {Record<string, import("../../src/types.js").Tool>} */
 export const tools = {
   list_dir: {
     definition: {
@@ -30,9 +56,7 @@ export const tools = {
       input_schema: { type: "object", properties: { path: { type: "string", description: "Ruta relativa a workspace/. '.' para la raíz." } }, required: ["path"] },
     },
     async run({ path: p }) {
-      const base = p.startsWith("/") ? ROOT : WORKSPACE;
-      const abs = inside(base, p.replace(/^\//, "") || ".");
-      const entries = await fs.readdir(abs, { withFileTypes: true });
+      const entries = await fs.readdir(resolveReadable(p), { withFileTypes: true });
       return entries.map((e) => (e.isDirectory() ? e.name + "/" : e.name)).join("\n") || "(vacío)";
     },
   },
@@ -44,9 +68,7 @@ export const tools = {
       input_schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
     },
     async run({ path: p }) {
-      const base = p.startsWith("/") ? ROOT : WORKSPACE;
-      const abs = inside(base, p.replace(/^\//, ""));
-      const txt = await fs.readFile(abs, "utf8");
+      const txt = await fs.readFile(resolveReadable(p), "utf8");
       return txt.split("\n").map((l, i) => `${String(i + 1).padStart(4)}  ${l}`).join("\n");
     },
   },
@@ -58,7 +80,7 @@ export const tools = {
       input_schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] },
     },
     async run({ path: p, content }) {
-      const abs = inside(WORKSPACE, p);
+      const abs = resolveWritable(p);
       await fs.mkdir(path.dirname(abs), { recursive: true });
       await fs.writeFile(abs, content, "utf8");
       return `ok, ${Buffer.byteLength(content)} bytes en workspace/${p}`;
@@ -77,7 +99,7 @@ export const tools = {
     },
     async run({ program, args = [] }) {
       try {
-        const { stdout, stderr } = await exec(program, args, { cwd: WORKSPACE, timeout: 60000, maxBuffer: 1e6 });
+        const { stdout, stderr } = await exec(program, args, { cwd: paths.workspace, timeout: 60000, maxBuffer: 1e6 });
         return (stdout + (stderr ? "\n[stderr]\n" + stderr : "")).trim() || "(sin salida)";
       } catch (e) {
         return `error (${e.code ?? "?"}): ${e.stderr || e.message}`;
@@ -105,7 +127,7 @@ export const tools = {
       input_schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
     },
     async run({ name }) {
-      const abs = inside(SKILLS, path.join(name, "SKILL.md"));
+      const abs = inside(paths.skills, path.join(name, "SKILL.md"));
       return await fs.readFile(abs, "utf8");
     },
   },
@@ -117,7 +139,7 @@ export const tools = {
       input_schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
     },
     async run({ path: p }) {
-      return await fs.readFile(inside(MEMORY, p), "utf8");
+      return await fs.readFile(inside(paths.memory, p), "utf8");
     },
   },
 
@@ -129,7 +151,7 @@ export const tools = {
     },
     async run({ path: p, content }) {
       if (!p.startsWith("areas/")) return "error: solo se escribe dentro de areas/. profile.md y preferences.md se editan a mano.";
-      const abs = inside(MEMORY, p);
+      const abs = inside(path.join(paths.memory, "areas"), p.slice("areas/".length));
       await fs.mkdir(path.dirname(abs), { recursive: true });
       await fs.writeFile(abs, content, "utf8");
       return `ok, memoria guardada en ${p}`;
@@ -139,6 +161,11 @@ export const tools = {
   // spawn_agent se registra en src/harness.js porque necesita el loop.
 };
 
+/**
+ * Definiciones que ve el modelo; con `names`, solo esas (los subagentes ven un subconjunto).
+ * @param {string[] | null} [names]
+ * @returns {import("../../src/types.js").ToolDefinition[]}
+ */
 export function definitions(names) {
   return Object.values(tools)
     .filter((t) => !names || names.includes(t.definition.name))

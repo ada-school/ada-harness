@@ -1,43 +1,30 @@
-// Pruebas del adaptador de Ollama contra un servidor HTTP falso que imita su API
-// (/api/tags, /api/show, /api/chat). Sin Ollama instalado y sin red externa.
+// Adaptador de Ollama contra un servidor HTTP falso que imita su API (/api/tags, /api/show,
+// /api/chat). Sin Ollama instalado y sin red externa.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { ollama, detectar, desdeOllama, haciaOllama } from "../src/providers/ollama.js";
-import { resolveProvider, listProviders } from "../src/providers/index.js";
-import { turn } from "../src/harness.js";
-import { ROOT } from "../src/context.js";
+import { ollama, detectar, desdeOllama, haciaOllama } from "../../src/providers/ollama.js";
+import { resolveProvider, listProviders } from "../../src/providers/index.js";
+import { turn } from "../../src/harness.js";
+import { startFakeOllama, modelo, respuestaChat as chat } from "../helpers/fake-ollama.js";
+import { tempWorkspace, cleanEnv } from "../helpers/workspace.js";
 
-delete process.env.ANTHROPIC_API_KEY; delete process.env.GEMINI_API_KEY; delete process.env.GOOGLE_API_KEY;
-delete process.env.ADA_PROVIDER; delete process.env.ADA_OLLAMA_MODEL; delete process.env.ADA_OLLAMA_NUM_CTX;
-
-// estado del Ollama falso
-const falso = { tags: [], show: {}, chats: [], pedidos: [] };
-let servidor;
+cleanEnv();
+/** @type {Awaited<ReturnType<typeof startFakeOllama>>} */
+let fake;
+/** @type {Awaited<ReturnType<typeof tempWorkspace>>} */
+let ws;
+let falso;
 before(async () => {
-  servidor = http.createServer(async (req, res) => {
-    let body = ""; for await (const c of req) body += c;
-    const json = (o, code = 200) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
-    if (req.url === "/api/tags") return json({ models: falso.tags });
-    if (req.url === "/api/show") return json(falso.show[JSON.parse(body).model] || { capabilities: ["completion"] });
-    if (req.url === "/api/chat") {
-      falso.pedidos.push(JSON.parse(body));
-      const r = falso.chats.shift();
-      return r ? json(r) : json({ error: "sin respuestas en la simulación" }, 500);
-    }
-    json({ error: "ruta" }, 404);
-  });
-  await new Promise((ok) => servidor.listen(0, "127.0.0.1", ok));
+  fake = await startFakeOllama();
+  falso = fake.state;
   // sin esquema, como lo escribe la gente en OLLAMA_HOST: el adaptador lo normaliza
-  process.env.OLLAMA_HOST = `127.0.0.1:${servidor.address().port}`;
+  process.env.OLLAMA_HOST = fake.host;
+  ws = await tempWorkspace();
 });
-after(() => servidor.close());
-
-const modelo = (name, caps, extra = {}) => ({ name, model: name, size: 1, details: { parameter_size: "8.2B" }, ...(caps ? { capabilities: caps } : {}), ...extra });
-const chat = (message, extra = {}) => ({ model: "x", message: { role: "assistant", content: "", ...message }, done: true, done_reason: "stop", prompt_eval_count: 900, eval_count: 30, ...extra });
+after(async () => { await fake.close(); await ws.cleanup(); });
 
 test("detecta Ollama, habilita solo modelos con herramientas y prefiere uno local", async () => {
   falso.tags = [
@@ -54,7 +41,7 @@ test("detecta Ollama, habilita solo modelos con herramientas y prefiere uno loca
   // sin claves de Claude ni Gemini, el harness elige Ollama solo
   assert.equal((await resolveProvider()).name, "ollama");
   const lista = await listProviders();
-  assert.equal(lista.find((p) => p.default).name, "ollama");
+  assert.equal(lista.find((p) => p.default)?.name, "ollama");
 });
 
 test("versiones viejas sin capabilities en /api/tags: consulta /api/show y respeta su contexto", async () => {
@@ -97,7 +84,7 @@ test("loop completo: tool_calls sin id, resultado como role tool y num_ctx fijad
   assert.equal(out.trace.provider, "ollama");
   assert.equal(out.trace.model, "qwen3:8b");
   assert.equal(out.trace.budget, 16384, "el presupuesto sigue a la ventana real, no a routing.json");
-  assert.equal(out.trace.lastContext.usage.input_tokens, 900);
+  assert.equal(out.trace.lastContext?.usage.input_tokens, 900);
 
   const [p1, p2] = falso.pedidos;
   assert.equal(p1.stream, false);
@@ -144,15 +131,17 @@ test("subagente: mismo modelo por defecto, para no cargar un segundo modelo en m
 
 test("razonamiento: se separa del texto y vuelve como thinking", () => {
   const r = desdeOllama(chat({ content: "<think>busco el archivo</think>Voy a leerlo.", tool_calls: [{ function: { name: "read_file", arguments: '{"path":"a.js"}' } }] }));
-  assert.equal(r.content[0].text, "Voy a leerlo.");
-  assert.deepEqual(r.content[1].input, { path: "a.js" }, "arguments en string también se aceptan");
+  const [texto, llamada] = r.content;
+  assert.ok(texto.type === "text" && llamada.type === "tool_use");
+  assert.equal(texto.text, "Voy a leerlo.");
+  assert.deepEqual(llamada.input, { path: "a.js" }, "arguments en string también se aceptan");
   const msgs = haciaOllama("s", [{ role: "user", content: "x" }, { role: "assistant", content: r.content }]);
   assert.equal(msgs[2].thinking, "busco el archivo");
 });
 
 test("ventana chica: piso de 8192 y resultados grandes van a disco antes", async () => {
   process.env.ADA_OLLAMA_NUM_CTX = "1000";
-  const grande = path.join(ROOT, "workspace", "grande-prueba.txt");
+  const grande = path.join(ws.dir, "grande-prueba.txt");
   await fs.writeFile(grande, "linea de prueba\n".repeat(700)); // ~2.800 tokens: bajo 6k, sobre 8192 × 0.25
   try {
     falso.tags = [modelo("qwen3:8b", ["completion", "tools"])];
@@ -169,6 +158,5 @@ test("ventana chica: piso de 8192 y resultados grandes van a disco antes", async
   } finally {
     delete process.env.ADA_OLLAMA_NUM_CTX;
     await fs.rm(grande, { force: true });
-    await fs.rm(path.join(ROOT, "workspace", ".context"), { recursive: true, force: true });
   }
 });
