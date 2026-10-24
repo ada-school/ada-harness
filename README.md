@@ -4,6 +4,8 @@
 
 Un modelo de lenguaje recibe tokens y devuelve tokens. Eso es todo lo que hace. Un *harness* es la estructura alrededor de esa llamada: decide qué tokens entran, ejecuta lo que el modelo pide, y vuelve a llamar. Esta plantilla deja esa estructura explícita en archivos de texto que puedes leer, versionar y cambiar, y la acompaña de un chat mínimo donde ves cada capa funcionando en vivo.
 
+Funciona con **Claude** (Anthropic) y **Gemini** (Google): eliges el modelo en el chat o con una variable, y el loop es el mismo.
+
 Cero dependencias. Node 18 o superior. Licencia MIT.
 
 ---
@@ -15,6 +17,7 @@ Cero dependencias. Node 18 o superior. Licencia MIT.
 3. [Las capas del contexto](#3-las-capas-del-contexto)
 4. [Estructura del repositorio](#4-estructura-del-repositorio)
 5. [El loop agéntico](#5-el-loop-agéntico)
+   - [Un loop, varios modelos: Claude y Gemini](#un-loop-varios-modelos-claude-y-gemini)
 6. [Cuando la ventana se llena](#6-cuando-la-ventana-se-llena)
 7. [Subagentes](#7-subagentes)
 8. [El chat mínimo y su inspector](#8-el-chat-mínimo-y-su-inspector)
@@ -145,13 +148,21 @@ ada-harness/
 ├── src/
 │   ├── context.js                 Ensambla la ventana y reporta tokens por capa.
 │   ├── harness.js                 El loop: llamar, ejecutar, descargar, compactar, subagentes.
-│   └── server.js                  HTTP mínimo: sirve app/ y docs/, expone POST /api/chat.
+│   ├── providers/
+│   │   ├── index.js               Registro y elección del proveedor.
+│   │   ├── anthropic.js           Claude: el formato interno ya es el suyo.
+│   │   └── gemini.js              Gemini: traduce a generateContent y guarda las firmas.
+│   ├── env.js                     Carga .env, para el servidor y para la terminal.
+│   └── server.js                  HTTP mínimo: sirve app/ y docs/, expone la API del chat.
 ├── app/
 │   └── index.html                 Chat minimalista con inspector de contexto.
 ├── docs/
-│   └── Anatomía de un Agente.html    El explicador interactivo.
+│   ├── Anatomía de un Agente.html    El explicador interactivo.
+│   └── taller/                        Material del taller: plantilla, ejemplo resuelto y descuentos.js.
+├── tests/
+│   └── providers.test.js          Pruebas de los adaptadores, sin red: npm test.
 ├── workspace/                     Donde el agente lee, escribe y ejecuta. Nada fuera de aquí.
-├── .env.example                   ANTHROPIC_API_KEY, modelos, puerto.
+├── .env.example                   Claves de Claude y Gemini, modelos, puerto.
 ├── package.json                   Sin dependencias.
 └── LICENSE                        MIT.
 ```
@@ -182,7 +193,7 @@ flowchart TD
     ASM --> CHECK{"¿tokens estimados<br/>superan presupuesto × 0.8?"}
     CHECK -->|sí| COMPACT["compact()<br/>una llamada extra resume lo viejo"]
     COMPACT --> CALL
-    CHECK -->|no| CALL["Paso 2: callModel()<br/>POST /v1/messages con tools"]
+    CHECK -->|no| CALL["Paso 2: callModel()<br/>el proveedor traduce y llama"]
     CALL --> STOP{"stop_reason"}
     STOP -->|"end_turn"| DONE(["Devolver texto. Fin del turno"])
     STOP -->|"tool_use"| EXEC["Paso 3: ejecutar cada herramienta<br/>localmente, dentro de workspace/"]
@@ -223,6 +234,43 @@ sequenceDiagram
     H->>M: messages + tool_result
     M-->>H: end_turn: "Listo, guardé 4.187 COP"
     H-->>U: texto + trace (llamadas, herramientas, capas)
+```
+
+### Un loop, varios modelos: Claude y Gemini
+
+El loop no sabe con qué modelo habla. Trabaja con un historial en formato interno (bloques `text`, `tool_use` y `tool_result`) y `callModel()` se lo entrega a un proveedor, que lo traduce a su API y traduce la respuesta de vuelta.
+
+```mermaid
+flowchart LR
+    LOOP["src/harness.js<br/>runAgent()"] --> CM["callModel()"]
+    CM --> SEL{"proveedor<br/>selector del chat<br/>o ADA_PROVIDER"}
+    SEL -->|anthropic| A["providers/anthropic.js<br/>casi sin traducción"]
+    SEL -->|gemini| G["providers/gemini.js<br/>traduce a generateContent"]
+    A --> AA[("api.anthropic.com<br/>/v1/messages")]
+    G --> GG[("generativelanguage<br/>.googleapis.com")]
+```
+
+Qué traduce el adaptador de Gemini:
+
+| Formato interno (Claude) | Gemini `generateContent` |
+|---|---|
+| `system` | `systemInstruction.parts[].text` |
+| `tools[].input_schema` | `tools[].functionDeclarations[].parameters` |
+| rol `assistant` | rol `model` |
+| bloque `tool_use` (`id`, `name`, `input`) | parte `functionCall` (`id`, `name`, `args`) |
+| bloque `tool_result` | parte `functionResponse` con el mismo `id` y `name`, en un turno `user` |
+| `stop_reason: "tool_use"` | hay partes `functionCall` (Gemini responde `STOP` igual) |
+| `usage.input_tokens` | `usageMetadata.promptTokenCount` |
+
+Lo delicado son las **firmas de pensamiento**. Gemini 3 y 4 adjuntan una `thoughtSignature` a ciertas partes, siempre a la primera `functionCall` de cada paso, y exigen recibirla intacta en la llamada siguiente; si falta en el turno actual, la API responde 400. El adaptador la guarda en el bloque interno como `_gemini.thoughtSignature` y la repone al traducir. El adaptador de Claude quita esos campos privados antes de enviar.
+
+Por eso **cambiar de proveedor empieza una conversación nueva**: cada API devuelve firmas e ids que solo entiende ella.
+
+Para agregar otro proveedor (OpenAI, Ollama, Mistral…), crea `src/providers/<nombre>.js` con el mismo contrato y regístralo en `src/providers/index.js`:
+
+```js
+{ name, label, keyEnv, model(), fastModel(), configured(),
+  call({ model, system, messages, tools, maxTokens }) }   // -> { content, stop_reason, usage }
 ```
 
 ---
@@ -293,7 +341,7 @@ Qué configura cada uno:
 | System prompt | `harness/agents/<nombre>.md` | Rol, formato del informe, tamaño máximo |
 | Herramientas visibles | `routing.json` → `agents.<nombre>.tools` | Un investigador no escribe; un revisor no navega |
 | Tope de iteraciones | `routing.json` → `agents.<nombre>.maxToolLoops` | Costo máximo por delegación |
-| Modelo | `.env` → `ADA_FAST_MODEL` | Subagentes y compactación usan el modelo rápido |
+| Modelo | `.env` → `ADA_ANTHROPIC_FAST_MODEL` o `ADA_GEMINI_FAST_MODEL` | Subagentes y compactación usan el modelo rápido del mismo proveedor |
 
 Cuándo **no** usarlos: si la tarea depende de lo que ya está en el contexto del padre, el subagente arranca frío y hay que escribirle todo. Ahí solo agregas latencia y pérdida de información.
 
@@ -301,7 +349,7 @@ Cuándo **no** usarlos: si la tarea depende de lo que ya está en el contexto de
 
 ## 8. El chat mínimo y su inspector
 
-`app/index.html` es una pantalla: conversación a la izquierda, inspector a la derecha. El inspector es el diagrama del explicador, en vivo.
+`app/index.html` es una pantalla: conversación a la izquierda, inspector a la derecha. El inspector es el diagrama del explicador, en vivo. Arriba, el selector **Modelo** muestra los proveedores con clave y el inspector dice con cuál habló la última llamada.
 
 ```mermaid
 flowchart LR
@@ -309,7 +357,7 @@ flowchart LR
         CHAT[Conversación]
         INS["Inspector<br/>• ventana por capas<br/>• llamadas del turno<br/>• herramientas<br/>• tokens reales de entrada<br/>• eventos: compactación, subagentes"]
     end
-    CHAT -->|"POST /api/chat {session, message}"| SRV[src/server.js]
+    CHAT -->|"POST /api/chat {session, message, provider}"| SRV[src/server.js]
     SRV --> LOOP["src/harness.js: turn()"]
     LOOP -->|"{text, trace}"| SRV
     SRV --> CHAT
@@ -329,9 +377,9 @@ El historial vive en memoria del proceso (`sessions` en `server.js`). Reiniciar 
 ## 9. Instalación y uso
 
 ```bash
-git clone <este repo> ada-harness
+git clone https://github.com/ada-school/ada-harness.git
 cd ada-harness
-cp .env.example .env          # pon tu ANTHROPIC_API_KEY
+cp .env.example .env          # pon tu clave de Claude, de Gemini o las dos
 node src/server.js            # http://localhost:3000
 ```
 
@@ -339,16 +387,29 @@ Desde la terminal, un turno sin interfaz:
 
 ```bash
 node src/harness.js "Lista los archivos del workspace y dime qué hay"
+node src/harness.js --gemini "Lo mismo, pero con Gemini"
+```
+
+Pruebas de los adaptadores, sin red ni claves:
+
+```bash
+npm test
 ```
 
 Variables en `.env`:
 
 | Variable | Default | Para qué |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | (requerida) | Autenticación con la API |
-| `ADA_MODEL` | `claude-sonnet-5-5` | Agente principal |
-| `ADA_FAST_MODEL` | `claude-haiku-5-5` | Subagentes y compactación |
+| `ANTHROPIC_API_KEY` | (vacía) | Clave de Claude |
+| `GEMINI_API_KEY` | (vacía) | Clave de Gemini. También acepta `GOOGLE_API_KEY` |
+| `ADA_PROVIDER` | el primero con clave | `anthropic` o `gemini` |
+| `ADA_ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Agente principal con Claude. `ADA_MODEL` sigue funcionando |
+| `ADA_ANTHROPIC_FAST_MODEL` | `claude-haiku-5-5` | Subagentes y compactación con Claude |
+| `ADA_GEMINI_MODEL` | `gemini-3.8-flash` | Agente principal con Gemini |
+| `ADA_GEMINI_FAST_MODEL` | `gemini-3.5-flash-lite` | Subagentes y compactación con Gemini |
 | `PORT` | `3000` | Puerto del servidor |
+
+Necesitas al menos una clave.
 
 Rutas del servidor:
 
@@ -356,7 +417,8 @@ Rutas del servidor:
 |---|---|---|
 | `/` | GET | El chat |
 | `/docs/Anatomía de un Agente.html` | GET | El explicador |
-| `/api/chat` | POST `{session, message}` | Un turno completo. Devuelve `{text, trace}` |
+| `/api/providers` | GET | Proveedores, su modelo y si tienen clave |
+| `/api/chat` | POST `{session, message, provider}` | Un turno completo. Devuelve `{text, trace, reset}` |
 | `/api/reset` | POST | Borra todas las sesiones |
 
 ---
@@ -371,6 +433,8 @@ En orden de impacto por minuto invertido:
 4. **Herramientas.** Registra una nueva en `harness/tools/index.js`: un objeto con `definition` (JSON que el modelo ve) y `run` (función). Mantén las rutas dentro de `workspace/` con `inside()`.
 5. **Subagentes.** Agrega `harness/agents/<nombre>.md` y su entrada en `routing.json`. Añade el nombre al `enum` de `SPAWN_DEF` en `src/harness.js`.
 6. **`routing.json`.** Ajusta presupuesto y umbrales según el modelo y el tipo de trabajo. Trabajo largo con muchos archivos: baja `offloadAbove`; conversación corta: sube `compactAt`.
+
+¿Otro modelo? Agrega un proveedor en `src/providers/` (ver [Un loop, varios modelos](#un-loop-varios-modelos-claude-y-gemini)). El resto del harness no cambia.
 
 ```mermaid
 flowchart LR
@@ -389,6 +453,7 @@ flowchart LR
 | **Aislar lo ruidoso.** Investigación y revisión en subagentes. | `spawnAgent()`, `agents/` |
 | **Todo es texto.** Cada capa es un archivo. Si no puedes leerlo, no está en el harness. | `harness/` entero |
 | **El modelo propone, el harness ejecuta.** Nada corre sin pasar por una función registrada y una carpeta permitida. | `runAgent()`, `inside()` |
+| **El modelo es intercambiable.** El loop habla un formato interno; cada proveedor traduce de ida y de vuelta. | `src/providers/` |
 
 ---
 
@@ -398,7 +463,15 @@ flowchart LR
 - **Sin sandbox real.** `run_command` corre dentro de `workspace/` con timeout y sin shell, pero no es un contenedor. Bien para uso local, no para multiusuario.
 - **Sin streaming.** Cada turno devuelve la respuesta completa. Agregar SSE es el siguiente paso natural.
 - **Historial en memoria.** Se pierde al reiniciar el servidor.
+- **Un proveedor por conversación.** Cambiar de modelo empieza una conversación nueva, porque las firmas y los ids de una API no sirven en la otra.
+- **Gemini sin opciones avanzadas.** El adaptador usa `generateContent` con el nivel de razonamiento por defecto del modelo, sin streaming ni caché. Las pruebas simulan la API con el formato documentado: antes de un taller, haz un turno real con tu clave.
 - **Sin caché de prompt.** La API permite cachear el bloque de sistema y las herramientas para abaratar llamadas repetidas. No cambia el tamaño de la ventana, solo el costo.
+
+---
+
+## Taller presencial
+
+`docs/taller/` tiene todo lo del taller "Abre un agente por dentro" (45 minutos): los pasos de preparación, la plantilla de tu primer skill, el ejemplo resuelto y el código de la demo. Empieza por [`docs/taller/README.md`](docs/taller/README.md).
 
 ---
 
@@ -406,6 +479,8 @@ flowchart LR
 
 - Explicador interactivo: [`docs/Anatomía de un Agente.html`](docs/Anatom%C3%ADa%20de%20un%20Agente.html)
 - API de mensajes y manejo de `stop_reason`: https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons
+- Gemini, llamadas a funciones: https://ai.google.dev/gemini-api/docs/generate-content/function-calling
+- Gemini, firmas de pensamiento: https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures
 
 ## Licencia
 

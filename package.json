@@ -1,12 +1,15 @@
 {
   "name": "ada-harness",
   "version": "0.1.0",
-  "description": "Plantilla mínima de un AI Harness: capas de contexto, loop agéntico, compactación y subagentes, con un chat minimalista.",
+  "description": "Plantilla mínima de un AI Harness: capas de contexto, loop agéntico, compactación y subagentes, con un chat minimalista. Funciona con Claude y Gemini.",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node src/server.js",
-    "cli": "node src/harness.js"
+    "cli": "node src/harness.js",
+    "test": "node --test"
   }
 }

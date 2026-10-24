@@ -7,9 +7,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 const exec = promisify(execFile);
-const ROOT = path.resolve(new URL("../..", import.meta.url).pathname);
+const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const WORKSPACE = path.join(ROOT, "workspace");
 const MEMORY = path.join(ROOT, "harness", "memory");
 const SKILLS = path.join(ROOT, "harness", "skills");

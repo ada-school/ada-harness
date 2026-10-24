@@ -2,39 +2,30 @@
 //   1. ensamblar contexto  2. llamar  3. si pide herramientas, ejecutarlas y volver a 2
 //   + compactar cuando la ventana se acerca al presupuesto
 //   + subagentes: el mismo loop con un contexto vacío y su propio prompt
+// El loop no sabe con qué modelo habla: callModel() delega en un proveedor (src/providers/).
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { tools, definitions } from "../harness/tools/index.js";
 import { ROOT, loadRouting, assembleSystem, estimateTokens, historyReport } from "./context.js";
+import { getProvider } from "./providers/index.js";
 
-const API = "https://api.anthropic.com/v1/messages";
-const MODEL = process.env.ADA_MODEL || "claude-sonnet-5-5";
-const FAST = process.env.ADA_FAST_MODEL || "claude-haiku-5-5";
-
-// --- la llamada. Lo único que el modelo "hace". ---
-async function callModel({ model, system, messages, tools: toolDefs, maxTokens = 4096 }) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("Falta ANTHROPIC_API_KEY (copia .env.example a .env)");
-  const res = await fetch(API, {
-    method: "POST",
-    headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages, ...(toolDefs?.length ? { tools: toolDefs } : {}) }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || `API ${res.status}`);
-  return data;
+// --- la llamada. Lo único que el modelo "hace". El proveedor traduce ida y vuelta. ---
+// Entra y sale en formato interno: bloques text, tool_use y tool_result.
+async function callModel(provider, { model, system, messages, tools: toolDefs, maxTokens = 4096 }) {
+  return provider.call({ model, system, messages, tools: toolDefs, maxTokens });
 }
 
 // --- compactación: una llamada extra resume lo viejo y lo reemplaza. ---
-async function compact(messages, routing, trace) {
+async function compact(messages, routing, trace, provider) {
   const keep = routing.keepLastMessagesOnCompact;
   if (messages.length <= keep + 1) return messages;
   const old = messages.slice(0, -keep);
   const tail = messages.slice(-keep);
   const dump = old.map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : JSON.stringify(m.content)}`).join("\n").slice(0, 200000);
-  const r = await callModel({
-    model: FAST,
+  const r = await callModel(provider, {
+    model: provider.fastModel(),
     system: "Resume esta conversación entre un usuario y un agente de ingeniería en máximo 400 palabras. Conserva: decisiones tomadas, archivos creados o modificados con su ruta, estado actual de la tarea, y cualquier dato que el usuario dio. Descarta salidas crudas de herramientas.",
     messages: [{ role: "user", content: dump }],
     maxTokens: 1200,
@@ -64,7 +55,7 @@ async function maybeOffload(name, result, routing) {
 }
 
 // --- el loop. Sirve para el agente principal y para subagentes. ---
-export async function runAgent({ messages, agentName = null, routing, trace }) {
+export async function runAgent({ messages, agentName = null, routing, trace, provider = getProvider() }) {
   const sys = await assembleSystem({ routing, agentName });
   const allowed = agentName ? routing.agents[agentName]?.tools : null;
   const toolDefs = definitions(allowed);
@@ -75,9 +66,9 @@ export async function runAgent({ messages, agentName = null, routing, trace }) {
   for (let loop = 0; loop < maxLoops; loop++) {
     // ¿la ventana se acerca al presupuesto? compactar antes de llamar.
     const used = estimateTokens(sys.system) + estimateTokens(toolDefs) + historyReport(messages).reduce((a, l) => a + l.tokens, 0);
-    if (used > budget * routing.compactAt) messages = await compact(messages, routing, trace);
+    if (used > budget * routing.compactAt) messages = await compact(messages, routing, trace, provider);
 
-    const r = await callModel({ model: agentName ? FAST : MODEL, system: sys.system, messages, tools: toolDefs });
+    const r = await callModel(provider, { model: agentName ? provider.fastModel() : provider.model(), system: sys.system, messages, tools: toolDefs });
     trace.calls++;
     trace.lastContext = { layers: sys.layers.concat([{ name: "toolDefinitions", tokens: estimateTokens(toolDefs) }], historyReport(messages)), usage: r.usage };
     messages.push({ role: "assistant", content: r.content });
@@ -92,7 +83,7 @@ export async function runAgent({ messages, agentName = null, routing, trace }) {
       let out;
       try {
         out = block.name === "spawn_agent"
-          ? await spawnAgent(block.input, routing, trace)
+          ? await spawnAgent(block.input, routing, trace, provider)
           : await tools[block.name].run(block.input);
         out = await maybeOffload(block.name, String(out), routing);
       } catch (e) {
@@ -116,29 +107,33 @@ const SPAWN_DEF = {
     required: ["agent", "task"],
   },
 };
-async function spawnAgent({ agent, task }, routing, trace) {
+async function spawnAgent({ agent, task }, routing, trace, provider) {
   if (!routing.agents[agent]) return `error: agente desconocido ${agent}`;
   const child = { calls: 0, tools: [], events: [] };
-  const { text } = await runAgent({ messages: [{ role: "user", content: task }], agentName: agent, routing, trace: child });
+  const { text } = await runAgent({ messages: [{ role: "user", content: task }], agentName: agent, routing, trace: child, provider });
   trace.events.push({ type: "subagent", agent, calls: child.calls, tools: child.tools.length });
   trace.calls += child.calls;
   return `[informe de ${agent}, ${child.calls} llamadas, ${child.tools.length} herramientas]\n${text}`;
 }
 
 // --- un turno completo, usado por el servidor. ---
-export async function turn({ history, userText }) {
+export async function turn({ history, userText, provider: nombre }) {
   const routing = await loadRouting();
-  const trace = { calls: 0, tools: [], events: [], lastContext: null };
+  const provider = getProvider(nombre);
+  const trace = { calls: 0, tools: [], events: [], lastContext: null, provider: provider.name, model: provider.model() };
   const messages = history.concat([{ role: "user", content: userText }]);
-  const { text, messages: next } = await runAgent({ messages, routing, trace });
+  const { text, messages: next } = await runAgent({ messages, routing, trace, provider });
   return { text, history: next, trace };
 }
 
-// --- uso desde la terminal: node src/harness.js "mensaje" ---
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
-  const msg = process.argv.slice(2).join(" ") || "Lista los archivos del workspace y dime qué hay.";
-  turn({ history: [], userText: msg }).then(({ text, trace }) => {
+// --- uso desde la terminal: node src/harness.js [--gemini | --anthropic] "mensaje" ---
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+  await import("./env.js");
+  const args = process.argv.slice(2);
+  const flag = args.find((a) => a.startsWith("--"));
+  const msg = args.filter((a) => !a.startsWith("--")).join(" ") || "Lista los archivos del workspace y dime qué hay.";
+  turn({ history: [], userText: msg, provider: flag ? flag.slice(2) : undefined }).then(({ text, trace }) => {
     console.log(text);
-    console.error(`\n[${trace.calls} llamadas, ${trace.tools.length} herramientas]`);
+    console.error(`\n[${trace.provider} · ${trace.model} · ${trace.calls} llamadas, ${trace.tools.length} herramientas]`);
   }).catch((e) => { console.error(e.message); process.exit(1); });
 }

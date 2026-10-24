@@ -18,6 +18,9 @@ header{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:10px 18
 header b{font-size:16px}
 header a,header button{font:inherit;font-size:13px;color:var(--fg2);background:none;border:1px solid var(--line);border-radius:6px;padding:4px 10px;text-decoration:none;cursor:pointer}
 header .sp{flex:1}
+header label{font-size:13px;color:var(--fg2);display:flex;align-items:center;gap:6px}
+header select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+#modelo{font-family:var(--mono);font-size:11px;color:var(--fg2);margin:2px 0 6px}
 main{display:flex;flex-direction:column;min-width:0}
 #log{flex:1;overflow:auto;padding:20px 18px;display:flex;flex-direction:column;gap:14px}
 .msg{max-width:72ch;white-space:pre-wrap;word-break:break-word}
@@ -51,6 +54,7 @@ aside h2{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(-
 <header>
   <b>ADA Harness</b><span style="color:var(--fg2);font-size:13px">chat mínimo + inspector de contexto</span>
   <span class="sp"></span>
+  <label for="prov">Modelo <select id="prov"><option>cargando…</option></select></label>
   <a href="/docs/Anatom%C3%ADa%20de%20un%20Agente.html" target="_blank">Explicador</a>
   <button id="reset" type="button">Nueva conversación</button>
 </header>
@@ -66,6 +70,7 @@ aside h2{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(-
 <aside>
   <div>
     <h2>Última llamada · ventana de contexto</h2>
+    <div id="modelo">proveedor: sin llamadas aún</div>
     <div class="meter" id="meter"></div>
     <div id="used" class="empty" style="font-family:var(--mono);font-size:11px;margin-top:4px">sin llamadas aún</div>
   </div>
@@ -84,8 +89,28 @@ const COLORS={system:'--l-sys',projectGuide:'--l-route',skillsIndex:'--l-skill',
 const $=id=>document.getElementById(id);
 const log=$('log'),t=$('t'),send=$('send');
 const session='s'+Math.random().toString(36).slice(2);
+const prov=$('prov');
+let proveedores=[];
+// Proveedores con clave: los sin clave aparecen deshabilitados y dicen qué variable falta.
+async function cargarProveedores(){
+  try{
+    const d=await (await fetch('/api/providers')).json(); proveedores=d.providers;
+    let guardado=null; try{guardado=localStorage.getItem('ada-proveedor')}catch{}
+    prov.innerHTML=proveedores.map(p=>`<option value="${p.name}" ${p.configured?'':'disabled'}>${p.label} · ${p.model}${p.configured?'':' (falta '+p.keyEnv+')'}</option>`).join('');
+    const elegido=proveedores.find(p=>p.name===guardado&&p.configured)||proveedores.find(p=>p.default);
+    if(elegido) prov.value=elegido.name;
+  }catch(e){prov.innerHTML='<option>sin servidor</option>'}
+}
+prov.addEventListener('change',()=>{
+  try{localStorage.setItem('ada-proveedor',prov.value)}catch{}
+  const p=proveedores.find(x=>x.name===prov.value);
+  log.innerHTML='';
+  add('s',`Ahora hablas con ${p.label} (${p.model}). Conversación nueva: el loop, las capas y las herramientas son los mismos; solo cambia el adaptador de src/providers/.`);
+});
+cargarProveedores();
 function add(cls,text){const d=document.createElement('div');d.className='msg '+cls;d.textContent=text;log.appendChild(d);log.scrollTop=log.scrollHeight;return d}
 function inspect(tr){
+  if(tr.provider) $('modelo').textContent=`proveedor: ${tr.provider} · ${tr.model}`;
   if(!tr.lastContext)return;
   const L=tr.lastContext.layers;const tot=L.reduce((a,l)=>a+l.tokens,0);
   $('meter').innerHTML=L.map(l=>`<i style="background:var(${COLORS[l.name.split(' (')[0]]||COLORS[l.name]||'--fg2'});flex:0 0 ${(l.tokens/BUDGET*100).toFixed(2)}%" title="${l.name}"></i>`).join('');
@@ -100,8 +125,8 @@ function inspect(tr){
 }
 $('f').addEventListener('submit',async e=>{e.preventDefault();const msg=t.value.trim();if(!msg)return;
   add('u',msg);t.value='';send.disabled=true;const w=add('s','pensando…');
-  try{const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session,message:msg})});
-    const d=await r.json();w.remove();if(d.error)add('s','error: '+d.error);else{add('a',d.text);inspect(d.trace)}}
+  try{const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session,message:msg,provider:prov.value})});
+    const d=await r.json();w.remove();if(d.error)add('s','error: '+d.error);else{if(d.reset)add('s','Cambiaste de proveedor: empezó una conversación nueva.');add('a',d.text);inspect(d.trace)}}
   catch(err){w.textContent='error: '+err.message}
   send.disabled=false;t.focus()});
 t.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('f').requestSubmit()}});

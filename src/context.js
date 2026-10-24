@@ -4,8 +4,9 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-export const ROOT = path.resolve(new URL("..", import.meta.url).pathname);
+export const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 // Estimación barata: ~4 caracteres por token en español e inglés mezclados.
 // Para cifras exactas usa el endpoint count_tokens de la API.
@@ -20,9 +21,9 @@ async function readIfExists(p) {
 }
 
 function frontmatter(txt) {
-  const m = txt.match(/^---\n([\s\S]*?)\n---/);
+  const m = txt.replace(/^\uFEFF/, "").match(/^---\r?\n([\s\S]*?)\r?\n---/);
   const out = {};
-  if (m) for (const line of m[1].split("\n")) { const i = line.indexOf(":"); if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim(); }
+  if (m) for (const line of m[1].split(/\r?\n/)) { const i = line.indexOf(":"); if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim(); }
   return out;
 }
 

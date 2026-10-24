@@ -1,25 +1,23 @@
-// Servidor mínimo: sirve app/ y docs/, y expone POST /api/chat.
+// Servidor mínimo: sirve app/ y docs/, y expone la API del chat.
+//   GET  /api/providers  proveedores disponibles y si tienen clave
+//   POST /api/chat       { session, message, provider? }  ->  { text, trace, reset? }
+//   POST /api/reset      borra todas las sesiones
 // Sin dependencias. Node 18+.
 
+import "./env.js";
 import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { ROOT } from "./context.js";
 import { turn } from "./harness.js";
-
-// Carga .env si existe (sin dependencia).
-try {
-  const env = await fs.readFile(path.join(ROOT, ".env"), "utf8");
-  for (const line of env.split("\n")) {
-    const m = line.match(/^\s*([A-Z_]+)\s*=\s*(.*)\s*$/);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-  }
-} catch {}
+import { getProvider, listProviders } from "./providers/index.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
 
-// Historial por sesión, en memoria del proceso. Para persistencia, guárdalo en disco por session id.
+// Historial por sesión, en memoria del proceso: { provider, history }.
+// Cambiar de proveedor empieza una conversación nueva: cada modelo devuelve firmas e ids que
+// solo entiende él (las thoughtSignature de Gemini, por ejemplo), y mezclarlos rompe el turno.
 const sessions = new Map();
 
 const server = http.createServer(async (req, res) => {
@@ -27,12 +25,18 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/chat") {
       let body = "";
       for await (const c of req) body += c;
-      const { session = "default", message } = JSON.parse(body || "{}");
+      const { session = "default", message, provider } = JSON.parse(body || "{}");
       if (!message) return json(res, 400, { error: "message requerido" });
-      const history = sessions.get(session) || [];
-      const out = await turn({ history, userText: message });
-      sessions.set(session, out.history);
-      return json(res, 200, { text: out.text, trace: out.trace });
+      const prov = getProvider(provider);
+      const previa = sessions.get(session);
+      const reset = Boolean(previa && previa.provider !== prov.name);
+      const history = previa && !reset ? previa.history : [];
+      const out = await turn({ history, userText: message, provider: prov.name });
+      sessions.set(session, { provider: prov.name, history: out.history });
+      return json(res, 200, { text: out.text, trace: out.trace, reset });
+    }
+    if (req.method === "GET" && req.url === "/api/providers") {
+      return json(res, 200, { providers: listProviders() });
     }
     if (req.method === "POST" && req.url === "/api/reset") {
       sessions.clear();
@@ -58,6 +62,8 @@ function json(res, code, obj) {
 }
 
 server.listen(PORT, () => {
+  const disponibles = listProviders().filter((p) => p.configured).map((p) => `${p.label} (${p.model})`);
   console.log(`ADA Harness en http://localhost:${PORT}`);
+  console.log(`Proveedores con clave: ${disponibles.join(", ") || "ninguno, revisa .env"}`);
   console.log(`Explicador en http://localhost:${PORT}/docs/Anatom%C3%ADa%20de%20un%20Agente.html`);
 });
