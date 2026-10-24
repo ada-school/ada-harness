@@ -58,7 +58,7 @@ test("POST /api/chat: errores de entrada con 400", async () => {
   assert.deepEqual(await r.json(), { error: "message requerido" });
 });
 
-test("POST /api/chat: un turno con herramienta y la sesión recuerda el anterior", async () => {
+test("CU-01.5 POST /api/chat: un turno con herramienta, y el segundo turno lleva el primero completo", async () => {
   fake.state.pedidos = [];
   fake.state.chats = [
     respuestaChat({ tool_calls: [{ function: { name: "write_file", arguments: { path: "nota.txt", content: "hola" } } }] }),
@@ -78,7 +78,7 @@ test("POST /api/chat: un turno con herramienta y la sesión recuerda el anterior
   assert.deepEqual(ultimo.map((m) => m.role), ["system", "user", "assistant", "tool", "assistant", "user"], "el segundo turno lleva el primero completo");
 });
 
-test("POST /api/chat: cambiar de proveedor empieza una conversación nueva", async () => {
+test("CU-02.6 POST /api/chat: cambiar de proveedor empieza una conversación nueva", async () => {
   process.env.GEMINI_API_KEY = "clave-de-prueba";
   const original = globalThis.fetch;
   /** @type {any[]} */
@@ -101,12 +101,33 @@ test("POST /api/chat: cambiar de proveedor empieza una conversación nueva", asy
   }
 });
 
-test("POST /api/chat: un proveedor sin clave responde 500 con el motivo", async () => {
+test("CU-02.6 POST /api/chat: otro modelo del mismo proveedor también empieza una conversación nueva", async () => {
+  fake.state.chats = [respuestaChat({ content: "uno" }), respuestaChat({ content: "dos" })];
+  await post("/api/chat", { session: "s5", message: "primero", provider: "ollama", model: "qwen3:8b" });
+  const r = await (await post("/api/chat", { session: "s5", message: "segundo", provider: "ollama", model: "llama3.1:8b" })).json();
+  assert.equal(r.reset, true);
+  assert.deepEqual(fake.state.pedidos.at(-1).messages.map((m) => m.role), ["system", "user"]);
+});
+
+test("seguridad: otra página no puede correr un turno, ni con texto plano ni desde otro origen", async () => {
+  const antes = fake.state.pedidos.length;
+  const plano = await fetch(base + "/api/chat", { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify({ message: "corre algo" }) });
+  assert.equal(plano.status, 415);
+  const ajeno = await fetch(base + "/api/chat", { method: "POST", headers: { "content-type": "application/json", origin: "https://sitio-cualquiera.example" }, body: JSON.stringify({ message: "corre algo" }) });
+  assert.equal(ajeno.status, 403);
+  assert.equal(fake.state.pedidos.length, antes, "el modelo no recibió nada");
+});
+
+test("CU-01.4 POST /api/chat: un proveedor sin clave responde 500 con el motivo", async () => {
   const r = await post("/api/chat", { session: "s3", message: "hola", provider: "anthropic" });
   assert.equal(r.status, 500);
   assert.match((await r.json()).error, /Falta ANTHROPIC_API_KEY/);
 });
 
-test("POST /api/reset", async () => {
+test("CU-04.1 POST /api/reset: el siguiente mensaje llega al modelo sin turnos anteriores", async () => {
+  fake.state.chats = [respuestaChat({ content: "uno" }), respuestaChat({ content: "dos" })];
+  await post("/api/chat", { session: "s4", message: "primero", provider: "ollama" });
   assert.deepEqual(await (await post("/api/reset", {})).json(), { ok: true });
+  await post("/api/chat", { session: "s4", message: "segundo", provider: "ollama" });
+  assert.deepEqual(fake.state.pedidos.at(-1).messages.map((m) => m.role), ["system", "user"]);
 });

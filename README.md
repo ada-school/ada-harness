@@ -6,7 +6,7 @@ Un modelo de lenguaje recibe tokens y devuelve tokens. Eso es todo lo que hace. 
 
 Funciona con **Claude** (Anthropic), **Gemini** (Google) y **modelos locales con Ollama**, sin clave y sin costo por token: si tienes Ollama corriendo, el harness lo detecta solo. Eliges el modelo en el chat o con una variable, y el loop es el mismo.
 
-Cero dependencias. Node 18 o superior. Licencia MIT.
+Cero dependencias para correrlo: `node src/server.js` y listo. Node 18 o superior. Pruebas que no necesitan claves ni red, decisiones de arquitectura escritas y un proceso de casos de uso con pruebas primero para el front end. Licencia MIT.
 
 ---
 
@@ -19,13 +19,19 @@ Cero dependencias. Node 18 o superior. Licencia MIT.
 5. [El loop agéntico](#5-el-loop-agéntico)
    - [Un loop, varios modelos: Claude, Gemini y Ollama](#un-loop-varios-modelos-claude-gemini-y-ollama)
    - [Modelos locales y gratis con Ollama](#modelos-locales-y-gratis-con-ollama)
+   - [Agregar otro proveedor](#agregar-otro-proveedor)
 6. [Cuando la ventana se llena](#6-cuando-la-ventana-se-llena)
 7. [Subagentes](#7-subagentes)
 8. [El chat mínimo y su inspector](#8-el-chat-mínimo-y-su-inspector)
+   - [Construir pantallas: casos de uso y pruebas primero](#construir-pantallas-casos-de-uso-y-pruebas-primero)
 9. [Instalación y uso](#9-instalación-y-uso)
+   - [Pruebas y tipos](#pruebas-y-tipos)
 10. [Adaptarlo a tu proyecto](#10-adaptarlo-a-tu-proyecto)
 11. [Principios que esta estructura hace cumplir](#11-principios-que-esta-estructura-hace-cumplir)
+    - [Decisiones de arquitectura](#decisiones-de-arquitectura)
 12. [Límites conocidos](#12-límites-conocidos)
+
+[Desarrollar este repo con Claude Code](#desarrollar-este-repo-con-claude-code) · [Taller presencial](#taller-presencial) · [Referencias](#referencias)
 
 ---
 
@@ -118,7 +124,7 @@ flowchart TB
 | Índice de memoria | `harness/memory/areas/*.md` (descripciones) | El agente, con `write_memory` | Siempre |
 | Contenido de memoria | cuerpo de `areas/*.md` | El agente | Bajo demanda, `read_memory` |
 | Herramientas | `harness/tools/index.js` | Tú | Siempre |
-| Historial | memoria del proceso (`src/server.js`) | Tú y el modelo | Siempre, hasta compactar |
+| Historial | memoria del proceso (`src/http/api.js`) | Tú y el modelo | Siempre, hasta compactar |
 | Resultados de herramientas | lo que devuelve cada ejecución | El mundo exterior | Después de cada ejecución |
 
 **Índice adentro, contenido afuera.** Es el patrón que se repite en skills, memoria y resultados grandes. El modelo siempre ve qué existe; carga el contenido completo solo cuando lo necesita. En el explicador esto es "context routing".
@@ -129,21 +135,28 @@ flowchart TB
 
 ```
 ada-harness/
-├── AGENTS.md                      Guía del proyecto. Se concatena al system prompt.
+├── AGENTS.md                      Guía del proyecto para el agente del harness. Se concatena a su system prompt.
+├── CLAUDE.md                      Guía para quien desarrolla este repo con Claude Code.
 ├── harness/                       Todo lo que define al agente. Solo texto.
 │   ├── system.md                  Rol y reglas base.
 │   ├── routing.json               Qué capa entra siempre, bajo demanda o nunca; presupuestos.
 │   ├── skills/
 │   │   ├── README.md              Cómo escribir un skill.
 │   │   ├── commit-convention/SKILL.md
-│   │   └── spec-first/SKILL.md
+│   │   ├── spec-first/SKILL.md
+│   │   └── frontend-tdd/          Proceso del front end: casos de uso y pruebas primero.
+│   │       ├── SKILL.md           Los pasos: caso de uso, rojo, verde, limpieza, listo cuando.
+│   │       ├── arquitectura.md    Las reglas del front end, sacadas de docs/decisiones/.
+│   │       └── plantilla-caso-de-uso.md
 │   ├── memory/
 │   │   ├── profile.md             Quién usa el harness.
 │   │   ├── preferences.md         Cómo quiere que el agente se comporte.
 │   │   └── areas/                 Un archivo por proyecto o tema. El agente los escribe.
-│   ├── agents/
-│   │   ├── researcher.md          System prompt del subagente investigador.
-│   │   └── reviewer.md            System prompt del subagente revisor.
+│   ├── agents/                    Un archivo por agente: frontmatter (name, description) + prompt.
+│   │   ├── researcher.md          Explora y resume.
+│   │   ├── reviewer.md            Revisa un cambio concreto y corre las pruebas.
+│   │   ├── frontend.md            Implementa pantallas con casos de uso y pruebas primero.
+│   │   └── qa.md                  Revisa el proyecto entero contra decisiones, casos de uso y pruebas.
 │   └── tools/
 │       └── index.js               Cada herramienta: definición JSON + función que la ejecuta.
 ├── src/                           El motor. Cada archivo tiene un solo trabajo.
@@ -161,32 +174,40 @@ ada-harness/
 │   │   ├── static.js              Qué archivos sirve: app/ y docs/, nada más.
 │   │   └── api.js                 /api/providers, /api/chat, /api/reset y las sesiones.
 │   ├── server.js                  Junta static.js y api.js en un servidor HTTP.
-│   └── cli.js                     El mismo turno desde la terminal.
+│   └── cli.js                     El mismo turno desde la terminal, o el peso de las capas.
 ├── app/                           El chat. HTML, CSS y módulos ES nativos: sin compilar.
 │   ├── index.html                 Solo estructura.
 │   ├── styles.css                 Colores por capa, iguales a los del explicador.
 │   └── js/
-│       ├── main.js                Conecta todo: eventos y estado de la pantalla.
+│       ├── main.js                Conecta eventos, estado y módulos. No decide nada.
 │       ├── api.js                 Las tres llamadas al servidor.
+│       ├── conversacion.js        Cuándo enviar y qué mostrar de cada respuesta (lógica pura).
 │       ├── selector.js            Opciones del selector de modelo (lógica pura + render).
 │       ├── inspector.js           Qué muestra el inspector (lógica pura + render).
-│       ├── chat.js                La conversación.
+│       ├── chat.js                Pinta los mensajes.
 │       └── format.js              Números y color de cada capa.
 ├── docs/
 │   ├── Anatomía de un Agente.html    El explicador interactivo.
-│   ├── decisiones/                    Por qué el proyecto es como es (ADR).
+│   ├── decisiones/                    Por qué el proyecto es como es: una decisión por archivo.
+│   ├── casos-de-uso/                  Qué tiene que lograr cada pantalla, con criterios numerados.
 │   └── taller/                        Material del taller: plantilla, ejemplo resuelto y descuentos.js.
-├── tests/                         57 pruebas, sin claves ni red externa. Ver sección 9.
-│   ├── unit/                      Herramientas, contexto, ventana, chat, HTTP y terminal.
+├── tests/                         Sin claves ni red externa. Ver "Pruebas y tipos".
+│   ├── unit/                      Herramientas, contexto, ventana, agentes, HTTP, terminal.
+│   │   ├── app/                   El chat: un archivo por módulo, una prueba por criterio.
+│   │   ├── arquitectura.test.js   Falla si alguien rompe una decisión verificable.
+│   │   └── casos-de-uso.test.js   Falla si un criterio no tiene prueba.
 │   ├── providers/                 Claude y Gemini con fetch simulado; Ollama con un servidor falso.
 │   ├── integration/               El servidor real de punta a punta.
 │   ├── helpers/                   fetch falso, Ollama falso, workspace temporal.
+│   ├── trazabilidad.js            Matriz de criterios contra pruebas (npm run trazabilidad).
 │   └── run.js                     Corre una capa o todas.
 ├── workspace/                     Donde el agente lee, escribe y ejecuta. Nada fuera de aquí.
+├── .claude/                       Para Claude Code: agentes frontend y qa, regla del front end.
 ├── .github/workflows/ci.yml       Tipos y pruebas en Node 18, 20 y 22 en cada push.
 ├── .env.example                   Claves de Claude y Gemini, Ollama, modelos, puerto.
 ├── jsconfig.json                  Configuración de la revisión de tipos.
 ├── package.json                   Cero dependencias para correr. TypeScript solo para revisar tipos.
+├── package-lock.json              Fija la versión de las herramientas de desarrollo.
 └── LICENSE                        MIT.
 ```
 
@@ -202,26 +223,28 @@ flowchart LR
     Q6["¿Qué entra al contexto y cuándo?"] --> F6["harness/routing.json"]
     Q7["¿Cómo corre el loop?"] --> F7["src/harness.js"]
     Q8["¿A quién delega?"] --> F8["harness/agents/"]
+    Q9["¿Por qué es así?"] --> F9["docs/decisiones/"]
+    Q10["¿Qué debe lograr cada pantalla?"] --> F10["docs/casos-de-uso/"]
 ```
 
 ---
 
 ## 5. El loop agéntico
 
-No existe un "módulo de agencia" dentro del modelo. `src/harness.js` es un ciclo de cuatro pasos:
+No existe un "módulo de agencia" dentro del modelo. `runAgent()` en `src/harness.js` es un ciclo de cuatro pasos. Lo que pasa cuando la ventana se llena vive aparte, en `src/window.js`:
 
 ```mermaid
 flowchart TD
-    START(["Mensaje del usuario"]) --> ASM["Paso 1: assembleContext()<br/>system + guía + índices + memoria + historial + mensaje"]
+    START(["Mensaje del usuario"]) --> ASM["Paso 1: assembleSystem() + historial<br/>system + guía + índices + memoria + mensajes"]
     ASM --> CHECK{"¿tokens estimados<br/>superan presupuesto × 0.8?"}
-    CHECK -->|sí| COMPACT["compact()<br/>una llamada extra resume lo viejo"]
+    CHECK -->|sí| COMPACT["compact() en window.js<br/>una llamada extra resume lo viejo"]
     COMPACT --> CALL
     CHECK -->|no| CALL["Paso 2: callModel()<br/>el proveedor traduce y llama"]
     CALL --> STOP{"stop_reason"}
     STOP -->|"end_turn"| DONE(["Devolver texto. Fin del turno"])
     STOP -->|"tool_use"| EXEC["Paso 3: ejecutar cada herramienta<br/>localmente, dentro de workspace/"]
     EXEC --> OFF{"¿resultado<br/>supera 6k tokens?"}
-    OFF -->|sí| DISK["Guardar en workspace/.context/<br/>dejar referencia + primeras líneas"]
+    OFF -->|sí| DISK["maybeOffload() en window.js<br/>guarda en workspace/.context/<br/>deja referencia + primeras líneas"]
     OFF -->|no| APPEND
     DISK --> APPEND["Paso 4: pegar tool_result al historial"]
     APPEND --> ASM
@@ -244,7 +267,7 @@ sequenceDiagram
     participant M as Modelo (API)
     participant T as Herramienta (tools/index.js)
     U->>H: "busca el precio del dólar y guárdalo"
-    H->>H: assembleContext()
+    H->>H: assembleSystem() + historial
     H->>M: messages + tools
     M-->>H: tool_use: web_fetch(url)
     H->>T: run({url})
@@ -321,7 +344,7 @@ Tres cosas que el adaptador cuida y que conviene entender:
 
 | Qué | Por qué importa | Qué hace el harness |
 |---|---|---|
-| **Ventana de contexto** | Con menos de 24 GB de VRAM, Ollama usa 4k tokens por defecto y trunca el inicio en silencio, system prompt incluido. Solo el sistema y las herramientas del harness ya pesan ~1.700. | Pide `num_ctx` de 16.384 (`ADA_OLLAMA_NUM_CTX`, mínimo 8.192) y el loop compacta contra esa ventana, no contra los 120.000 de `routing.json`. El inspector muestra la ventana real. |
+| **Ventana de contexto** | Con menos de 24 GB de VRAM, Ollama usa 4k tokens por defecto y trunca el inicio en silencio, system prompt incluido. Solo las capas fijas del harness ya pesan ~1.600 (`npm run capas`). | Pide `num_ctx` de 16.384 (`ADA_OLLAMA_NUM_CTX`, mínimo 8.192) y el loop compacta contra esa ventana, no contra los 120.000 de `routing.json`. El inspector muestra la ventana real. |
 | **Un solo modelo en memoria** | Cargar un segundo modelo para los subagentes duplica la memoria en una máquina chica. | Los subagentes usan el mismo modelo, salvo que definas `ADA_OLLAMA_FAST_MODEL`. |
 | **Resultados grandes** | En 16k tokens, un resultado de 6k es un tercio de la ventana. | El umbral para mandar resultados a disco baja a un cuarto de la ventana. |
 
@@ -347,13 +370,18 @@ Un modelo local de 8B es mucho más chico que Claude o Gemini: sigue bien pasos 
 
 ### Agregar otro proveedor
 
-Para sumar otro (OpenAI, Mistral…), crea `src/providers/<nombre>.js` con el mismo contrato y regístralo en `src/providers/index.js`:
+Para sumar otro (OpenAI, Mistral…), crea `src/providers/<nombre>.js` con el mismo contrato y regístralo en `src/providers/index.js`. El contrato es el tipo `Provider` de `src/types.js`; anota tu objeto con `@satisfies` y `npm run typecheck` te avisa si falta algo:
 
 ```js
-{ name, label, keyEnv, model(), fastModel(), configured(),
+/** @satisfies {import("../types.js").Provider} */
+export const miProveedor = {
+  name, label, keyEnv, model(), fastModel(), configured(),
   call({ model, system, messages, tools, maxTokens }),   // -> { content, stop_reason, usage }
-  refresh?(), contextWindow?(model), status?() }          // opcionales, los usa Ollama
+  refresh?(), contextWindow?(model), status?(),          // opcionales, los usa Ollama
+};
 ```
+
+Después agrega sus pruebas en `tests/providers/`, con `fakeFetch` de `tests/helpers/`: simula la API con respuestas en su formato documentado y verifica la traducción de ida y de vuelta, sobre todo ids de herramientas y campos privados.
 
 ---
 
@@ -367,8 +395,8 @@ flowchart LR
     FULL --> T2
     FULL --> T3
     T1["Truncar<br/>borrar lo más viejo"] --> R1["Barato. Lo borrado no vuelve.<br/>No implementado: no sirve para trabajo largo."]
-    T2["Compactar<br/>resumir lo viejo con una llamada extra"] --> R2["Conserva decisiones y estado.<br/>Pierde cifras y matices.<br/>Implementado en compact()"]
-    T3["Descargar a archivos<br/>resultado grande a disco + referencia"] --> R3["No se pierde nada. Se relee si hace falta.<br/>Implementado en maybeOffload()"]
+    T2["Compactar<br/>resumir lo viejo con una llamada extra"] --> R2["Conserva decisiones y estado.<br/>Pierde cifras y matices.<br/>compact() en src/window.js"]
+    T3["Descargar a archivos<br/>resultado grande a disco + referencia"] --> R3["No se pierde nada. Se relee si hace falta.<br/>maybeOffload() en src/window.js"]
     style T2 fill:#d9641e,color:#fff,stroke:#d9641e
     style T3 fill:#d9641e,color:#fff,stroke:#d9641e
 ```
@@ -380,9 +408,18 @@ Parámetros en `harness/routing.json`:
   "contextBudgetTokens": 120000,     // presupuesto, no el límite del modelo
   "compactAt": 0.8,                   // compactar al 80%
   "keepLastMessagesOnCompact": 4,     // los últimos N mensajes quedan intactos
-  "layers": { "toolResults": { "offloadAbove": 6000, "offloadTo": "workspace/.context" } }
+  "layers": { "toolResults": { "offloadAbove": 6000, "offloadTo": ".context" } }   // dentro del workspace
 }
 ```
+
+Todo esto vive en `src/window.js`, separado del loop:
+
+| Función | Qué decide | Se prueba sin modelo |
+|---|---|---|
+| `budgetFor()` | El presupuesto real: el de `routing.json` o la ventana del modelo, la que sea menor | Sí |
+| `planCompaction()` | `"ok"`, `"compact"` o `"full"` (lo fijo ya no cabe y resumir no libera nada) | Sí |
+| `compact()` | Resume lo viejo con el modelo rápido y deja los últimos mensajes intactos | Con un proveedor falso |
+| `maybeOffload()` | Si un resultado pasa de `offloadAbove` o de un cuarto de la ventana, lo guarda en disco | Sí |
 
 Detalle de implementación que importa: la API exige que el historial alterne `user` y `assistant` y empiece en `user`. `compact()` reemplaza lo viejo por un par `user` (resumen) + `assistant` (acuse) y recorta la cola para que siga alternando.
 
@@ -416,14 +453,36 @@ flowchart TB
 
 Los 40k tokens de búsqueda se quedan en B. A recibe 800. Esa asimetría es la razón de existir de los subagentes.
 
+La plantilla trae cuatro:
+
+| Agente | Para qué | Herramientas | Modelo |
+|---|---|---|---|
+| `researcher` | Explorar y resumir | `list_dir`, `read_file`, `web_fetch` | rápido |
+| `reviewer` | Revisar un cambio concreto y correr sus pruebas | `list_dir`, `read_file`, `run_command` | rápido |
+| `frontend` | Implementar pantallas con casos de uso y pruebas primero | las de lectura, `write_file`, `run_command`, `load_skill` | principal |
+| `qa` | Revisar el proyecto entero contra decisiones, casos de uso y pruebas. No escribe | las de lectura, `run_command`, `load_skill` | principal |
+
+Un agente es un archivo y una entrada en `routing.json`, nada de código ([decisión 0008](docs/decisiones/0008-agentes-por-archivo.md)). El harness arma `spawn_agent` en cada turno desde ese índice, igual que el índice de skills:
+
+```mermaid
+flowchart LR
+    F["harness/agents/*.md<br/>frontmatter: name + description"] --> IDX["agentsIndex()<br/>src/context.js"]
+    R["routing.json → agents<br/>tools · maxToolLoops · model"] --> IDX
+    IDX --> SP["spawn_agent<br/>una línea por agente"]
+    SP --> M(("Agente principal"))
+    M -->|"spawn_agent(frontend, tarea)"| SUB["Subagente frontend<br/>cuerpo de frontend.md + AGENTS.md<br/>solo sus herramientas, su modelo"]
+    style SP fill:#d9641e,color:#fff,stroke:#d9641e
+```
+
 Qué configura cada uno:
 
 | | Dónde | Qué controla |
 |---|---|---|
-| System prompt | `harness/agents/<nombre>.md` | Rol, formato del informe, tamaño máximo |
+| System prompt | cuerpo de `harness/agents/<nombre>.md` | Rol, proceso, formato del informe, tamaño máximo |
+| Cuándo lo elige el modelo | `description` del frontmatter | Una línea dentro de `spawn_agent`. Viaja en cada llamada: mantenla corta |
 | Herramientas visibles | `routing.json` → `agents.<nombre>.tools` | Un investigador no escribe; un revisor no navega |
 | Tope de iteraciones | `routing.json` → `agents.<nombre>.maxToolLoops` | Costo máximo por delegación |
-| Modelo | `.env` → `ADA_ANTHROPIC_FAST_MODEL`, `ADA_GEMINI_FAST_MODEL` o `ADA_OLLAMA_FAST_MODEL` | Subagentes y compactación usan el modelo rápido del mismo proveedor; con Ollama, el mismo modelo por defecto |
+| Modelo | `routing.json` → `agents.<nombre>.model` | `"fast"` (por defecto) o `"main"`. El rápido sale de `ADA_*_FAST_MODEL`; con Ollama, por defecto es el mismo modelo |
 
 Cuándo **no** usarlos: si la tarea depende de lo que ya está en el contexto del padre, el subagente arranca frío y hay que escribirle todo. Ahí solo agregas latencia y pérdida de información.
 
@@ -431,15 +490,15 @@ Cuándo **no** usarlos: si la tarea depende de lo que ya está en el contexto de
 
 ## 8. El chat mínimo y su inspector
 
-`app/index.html` es una pantalla: conversación a la izquierda, inspector a la derecha. El inspector es el diagrama del explicador, en vivo. Arriba, el selector **Modelo** muestra los proveedores con clave y cada modelo de Ollama detectado, y el inspector dice con cuál habló la última llamada y de qué tamaño es su ventana.
+`app/` es una pantalla: conversación a la izquierda, inspector a la derecha. El inspector es el diagrama del explicador, en vivo. Arriba, el selector **Modelo** muestra los proveedores con clave y cada modelo de Ollama detectado, y el inspector dice con cuál habló la última llamada y de qué tamaño es su ventana.
 
 ```mermaid
 flowchart LR
-    subgraph UI["app/index.html"]
+    subgraph UI["app/ (index.html + js/)"]
         CHAT[Conversación]
         INS["Inspector<br/>• ventana por capas<br/>• llamadas del turno<br/>• herramientas<br/>• tokens reales de entrada<br/>• eventos: compactación, subagentes"]
     end
-    CHAT -->|"POST /api/chat {session, message, provider, model}"| SRV[src/server.js]
+    CHAT -->|"POST /api/chat {session, message, provider, model}"| SRV[src/http/api.js]
     SRV --> LOOP["src/harness.js: turn()"]
     LOOP -->|"{text, trace}"| SRV
     SRV --> CHAT
@@ -452,7 +511,41 @@ Qué mirar en el inspector después de cada mensaje:
 - **Tokens de entrada reales.** `usage.input_tokens` que devuelve la API, al lado del estimado local (4 caracteres por token). La diferencia te calibra el estimador.
 - **Eventos del loop.** Cada herramienta con su entrada recortada, cada compactación con cuántos mensajes resumió, cada subagente con sus llamadas.
 
-El historial vive en memoria del proceso (`sessions` en `server.js`). Reiniciar el servidor lo borra. Para persistirlo, guarda el array `history` por sesión en disco.
+El historial vive en memoria del proceso (`createSessionStore()` en `src/http/api.js`). Reiniciar el servidor lo borra. Para persistirlo, reemplaza ese objeto por uno que guarde el `history` de cada sesión en disco: tiene cuatro métodos y nada más depende de cómo los implementes.
+
+Cómo está hecho el chat, para que sea fácil de cambiar:
+
+- **Sin compilar.** HTML, un CSS y módulos ES nativos que el navegador carga tal cual. No hay `npm install` para verlo.
+- **Lo que decide, separado de lo que pinta.** Cada decisión es una función pura: `debeEnviar()` y `lineasDeRespuesta()` en `conversacion.js`, `buildOptions()` en `selector.js`, `inspectorView()` en `inspector.js`. Los `render*()` solo pintan y `main.js` solo conecta. Las pruebas corren las funciones puras en Node, sin navegador ([decisión 0003](docs/decisiones/0003-vista-pura-render-delgado.md)).
+- **Texto del modelo siempre como texto.** Todo se inserta con `textContent`. Una prueba falla si algún módulo usa `innerHTML`, así una respuesta con `<img onerror=…>` se ve literal y no se ejecuta.
+
+### Construir pantallas: casos de uso y pruebas primero
+
+Todo cambio que una persona note en pantalla sigue el mismo ciclo ([decisión 0007](docs/decisiones/0007-casos-de-uso-y-tdd.md)). El procedimiento completo está en el skill [`frontend-tdd`](harness/skills/frontend-tdd/SKILL.md) y las reglas en su [`arquitectura.md`](harness/skills/frontend-tdd/arquitectura.md).
+
+```mermaid
+flowchart LR
+    CU["Caso de uso<br/>docs/casos-de-uso/<br/>criterios CU-NN.M"] --> ROJO["Rojo<br/>prueba con el ID<br/>falla por la razón esperada"]
+    ROJO --> VERDE["Verde<br/>el mínimo código<br/>en una función pura"]
+    VERDE --> LIMPIA["Limpieza<br/>con todo en verde"]
+    LIMPIA -->|"siguiente criterio"| ROJO
+    LIMPIA --> CHECK["npm run check<br/>tipos, pruebas,<br/>arquitectura, trazabilidad"]
+    CHECK --> QA["Agente qa<br/>veredicto con evidencia"]
+    style ROJO fill:#b3412e,color:#fff,stroke:#b3412e
+    style VERDE fill:#2e7d4f,color:#fff,stroke:#2e7d4f
+    style CHECK fill:#d9641e,color:#fff,stroke:#d9641e
+```
+
+| Pieza | Dónde | Qué aporta |
+|---|---|---|
+| Casos de uso | [`docs/casos-de-uso/`](docs/casos-de-uso/README.md) | Qué tiene que lograr la persona, con criterios "Dado, cuando, entonces" numerados |
+| Pruebas por criterio | `tests/unit/app/<modulo>.test.js` | El nombre de cada prueba empieza con el ID del criterio que cubre |
+| Trazabilidad | `npm run trazabilidad` | Cada criterio contra sus pruebas. `casos-de-uso.test.js` falla si alguno queda sin prueba |
+| Reglas verificables | `tests/unit/arquitectura.test.js` | Falla si `app/` importa un paquete, usa `innerHTML` o un módulo con lógica no tiene pruebas |
+| Quién implementa | agente `frontend` | En el harness, con `spawn_agent`; en Claude Code, con `.claude/agents/frontend.md` |
+| Quién revisa | agente `qa` | Corre el check y la trazabilidad, compara el código con las decisiones y el README con los archivos |
+
+Los cuatro casos de uso del chat (conversar, elegir modelo, inspeccionar el contexto, empezar de nuevo) tienen 24 criterios: 22 cubiertos por pruebas y 2 que se verifican mirando la pantalla.
 
 ---
 
@@ -473,10 +566,18 @@ node src/harness.js --gemini "Lo mismo, pero con Gemini"
 node src/harness.js --ollama --model=qwen3:8b "Lo mismo, local y gratis"
 ```
 
-Pruebas de los adaptadores, sin red ni claves:
+También funcionan `npm start` y `npm run cli -- "mensaje"`.
 
-```bash
-npm test
+¿Cuánto pesa el contexto antes de escribir nada? `npm run capas` lo mide sin llamar a ningún modelo:
+
+```
+  system              223
+  projectGuide        399
+  skillsIndex         136
+  memoryCore          110
+  memoryIndex           7
+  toolDefinitions     750
+  total              1625
 ```
 
 Variables en `.env`:
@@ -494,7 +595,10 @@ Variables en `.env`:
 | `ADA_OLLAMA_MODEL` | el primero local con herramientas | Modelo fijo de Ollama |
 | `ADA_OLLAMA_FAST_MODEL` | el mismo modelo | Subagentes con Ollama. Otro modelo implica más memoria |
 | `ADA_OLLAMA_NUM_CTX` | `16384` | Ventana que se le pide a Ollama. Mínimo 8.192 |
+| `ADA_WORKSPACE` | `workspace/` | Carpeta donde el agente lee, escribe y ejecuta. Apúntala a un proyecto real para trabajar sobre él |
+| `ADA_MEMORY` | `harness/memory/` | Carpeta de memoria del agente. Las pruebas la apuntan a una temporal |
 | `PORT` | `3000` | Puerto del servidor |
+| `ADA_HOST` | `127.0.0.1` | Dónde escucha el servidor. Solo esta máquina por defecto; ábrelo a tu red únicamente a propósito |
 
 Necesitas una clave o un Ollama corriendo con al menos un modelo que use herramientas.
 
@@ -508,6 +612,31 @@ Rutas del servidor:
 | `/api/chat` | POST `{session, message, provider, model}` | Un turno completo. Devuelve `{text, trace, reset}` |
 | `/api/reset` | POST | Borra todas las sesiones |
 
+La API solo atiende al propio chat: el servidor escucha en `127.0.0.1`, y un POST necesita `application/json` y un `Origin` propio (o ninguno, como `curl`). Otra página abierta en tu navegador no puede usarla ([decisión 0006](docs/decisiones/0006-sandbox-y-archivos-protegidos.md)).
+
+### Pruebas y tipos
+
+Correr el harness no necesita instalar nada. Para revisar tipos sí: `npm install` trae TypeScript, solo como herramienta de desarrollo. El código sigue siendo JavaScript; los tipos viven en comentarios JSDoc (`src/types.js`).
+
+```bash
+npm test                      # las 103 pruebas: unit, providers e integration
+npm run test:unit             # una capa
+npm run trazabilidad          # cada criterio de los casos de uso contra sus pruebas
+npm run typecheck             # tipos con TypeScript, sin compilar
+npm run check                 # tipos + pruebas: córrelo antes de un commit
+```
+
+```mermaid
+flowchart LR
+    U["unit · 76<br/>lógica pura, arquitectura,<br/>trazabilidad, milisegundos"] --> P["providers · 18<br/>APIs simuladas, Ollama falso"] --> I["integration · 9<br/>servidor real de punta a punta"]
+```
+
+Ninguna prueba usa claves ni sale a internet: Claude y Gemini se simulan con `fakeFetch`, Ollama con un servidor que imita `/api/tags`, `/api/show` y `/api/chat`, y cada prueba trabaja en un workspace y una memoria temporales (`ADA_WORKSPACE`, `ADA_MEMORY`): correrlas no deja rastro en el repo. GitHub Actions corre tipos y pruebas en Node 18, 20 y 22 en cada push (`.github/workflows/ci.yml`).
+
+Dos archivos de `tests/unit/` no prueban funciones sino reglas del proyecto. `arquitectura.test.js` verifica las decisiones que se pueden verificar (sin paquetes en el chat, sin `innerHTML`, un archivo de pruebas por módulo con lógica) y `casos-de-uso.test.js` verifica que cada criterio tenga su prueba. Si uno de ellos falla, no lo ajustes para que pase: lee la decisión que cita.
+
+Las pruebas que más importan son las de seguridad de `tests/unit/tools.test.js`: el agente no sale del workspace (tampoco con `../`, rutas absolutas o una carpeta hermana con el mismo prefijo), no lee ni escribe `.env` ni `.git` en ningún nivel, tampoco en el workspace, `write_memory` no escribe fuera de `areas/`, `web_fetch` no entra a la red interna y la API del servidor no atiende a otras páginas. Si cambias `inside()`, `resolveReadable()`, `urlPublica()` o `peticionPermitida()`, esas pruebas te dicen si abriste un hueco.
+
 ---
 
 ## 10. Adaptarlo a tu proyecto
@@ -517,15 +646,16 @@ En orden de impacto por minuto invertido:
 1. **`AGENTS.md`.** Stack, comandos, convenciones, qué no tocar. Es la capa más barata y la más efectiva. Una regla aquí vale más que repetirla en cada mensaje.
 2. **`harness/memory/profile.md` y `preferences.md`.** Escríbelos a mano la primera vez. El agente solo escribe en `areas/`.
 3. **Skills.** Un skill es un procedimiento, no una enciclopedia. La `description` del frontmatter es la condición de disparo: escríbela como "cárgalo cuando…". Si pasa de 200 líneas, divídelo.
-4. **Herramientas.** Registra una nueva en `harness/tools/index.js`: un objeto con `definition` (JSON que el modelo ve) y `run` (función). Mantén las rutas dentro de `workspace/` con `inside()`.
-5. **Subagentes.** Agrega `harness/agents/<nombre>.md` y su entrada en `routing.json`. Añade el nombre al `enum` de `SPAWN_DEF` en `src/harness.js`.
+4. **Herramientas.** Registra una nueva en `harness/tools/index.js`: un objeto con `definition` (JSON que el modelo ve) y `run` (función). Mantén las rutas dentro de `workspace/` con `inside()` y agrega su prueba en `tests/unit/tools.test.js`.
+5. **Subagentes.** Agrega `harness/agents/<nombre>.md` con frontmatter (`name` y una `description` de una línea) y su entrada en `routing.json`: herramientas, tope de iteraciones y modelo. `spawn_agent` lo ofrece solo.
 6. **`routing.json`.** Ajusta presupuesto y umbrales según el modelo y el tipo de trabajo. Trabajo largo con muchos archivos: baja `offloadAbove`; conversación corta: sube `compactAt`.
+7. **Decisiones y casos de uso.** Cuando tomes una decisión que alguien podría cuestionar, escríbela en `docs/decisiones/` con la prueba que la verifica. Cuando tu proyecto tenga pantallas, escribe sus casos de uso y deja que el agente `frontend` siga el ciclo de pruebas primero.
 
 ¿Otro modelo? Agrega un proveedor en `src/providers/` (ver [Agregar otro proveedor](#agregar-otro-proveedor)). El resto del harness no cambia.
 
 ```mermaid
 flowchart LR
-    P1["Paso 1<br/>AGENTS.md"] --> P2["Paso 2<br/>memoria base"] --> P3["Paso 3<br/>skills"] --> P4["Paso 4<br/>herramientas"] --> P5["Paso 5<br/>subagentes"] --> P6["Paso 6<br/>routing.json"]
+    P1["Paso 1<br/>AGENTS.md"] --> P2["Paso 2<br/>memoria base"] --> P3["Paso 3<br/>skills"] --> P4["Paso 4<br/>herramientas"] --> P5["Paso 5<br/>subagentes"] --> P6["Paso 6<br/>routing.json"] --> P7["Paso 7<br/>decisiones y<br/>casos de uso"]
 ```
 
 ---
@@ -534,26 +664,79 @@ flowchart LR
 
 | Principio | Dónde vive en el código |
 |---|---|
-| **Índice adentro, contenido afuera.** Skills, memoria y resultados grandes se listan en el contexto y se cargan completos solo cuando hace falta. | `context.js` (índices), `load_skill`, `read_memory`, `maybeOffload()` |
+| **Índice adentro, contenido afuera.** Skills, memoria y resultados grandes se listan en el contexto y se cargan completos solo cuando hace falta. | `context.js` (índices), `load_skill`, `read_memory`, `window.js` → `maybeOffload()` |
 | **El contexto enfoca, no enseña.** Si el modelo necesita algo que no sabe, una herramienta lo trae como texto. | `tools/index.js` |
-| **Degradación antes del límite.** Compactar al 80%, no al 100%. | `routing.json` → `compactAt`, `compact()` |
-| **Aislar lo ruidoso.** Investigación y revisión en subagentes. | `spawnAgent()`, `agents/` |
+| **Degradación antes del límite.** Compactar al 80%, no al 100%. | `routing.json` → `compactAt`, `window.js` → `compact()` |
+| **Aislar lo ruidoso.** Investigación, revisión, implementación de pantallas y QA en subagentes, cada uno con su contexto. | `spawnAgent()`, `agents/`, `routing.json` → `agents` |
 | **Todo es texto.** Cada capa es un archivo. Si no puedes leerlo, no está en el harness. | `harness/` entero |
 | **El modelo propone, el harness ejecuta.** Nada corre sin pasar por una función registrada y una carpeta permitida. | `runAgent()`, `inside()` |
+| **Los secretos no son contexto.** El agente no puede leer `.env` ni `.git`, ni siquiera desde la raíz del repo. | `config.js` → `isProtected()`, `resolveReadable()` |
+| **Lo que decide es puro; lo que toca el mundo, delgado.** Las reglas se prueban sin red, sin modelo y sin navegador. | `window.js`, `app/js/*`, `tests/` |
 | **El modelo es intercambiable.** El loop habla un formato interno; cada proveedor traduce de ida y de vuelta. | `src/providers/` |
+| **Primero el criterio, después la prueba, al final el código.** Una pantalla está lista cuando cada criterio de su caso de uso tiene una prueba que lo nombra. | `docs/casos-de-uso/`, skill `frontend-tdd`, `casos-de-uso.test.js` |
+| **Una decisión que no se verifica es una sugerencia.** Cada decisión de arquitectura dice qué prueba falla si alguien la rompe. | `docs/decisiones/`, `arquitectura.test.js` |
+
+### Decisiones de arquitectura
+
+El porqué de cada pieza está en [`docs/decisiones/`](docs/decisiones/README.md), una decisión por archivo:
+
+| # | Decisión | Se verifica en |
+|---|---|---|
+| [0001](docs/decisiones/0001-interfaz-sin-compilacion.md) | El chat sigue sin paso de compilación | `arquitectura.test.js` |
+| [0002](docs/decisiones/0002-formato-interno-y-proveedores.md) | Un formato interno de mensajes y un adaptador por proveedor | `tests/providers/` |
+| [0003](docs/decisiones/0003-vista-pura-render-delgado.md) | En el chat, la lógica es pura y el render no decide | `arquitectura.test.js`, `tests/unit/app/` |
+| [0004](docs/decisiones/0004-tipos-con-jsdoc.md) | Tipos en JSDoc revisados por TypeScript, sin compilar | `npm run typecheck` |
+| [0005](docs/decisiones/0005-pruebas-sin-red.md) | Pruebas en tres capas, sin claves ni red | `tests/run.js`, CI |
+| [0006](docs/decisiones/0006-sandbox-y-archivos-protegidos.md) | Las herramientas no salen del workspace ni tocan secretos | `tools.test.js` |
+| [0007](docs/decisiones/0007-casos-de-uso-y-tdd.md) | El front end se construye con casos de uso y pruebas primero | `casos-de-uso.test.js` |
+| [0008](docs/decisiones/0008-agentes-por-archivo.md) | Un agente es un archivo y una entrada en routing.json | `agentes.test.js` |
 
 ---
 
 ## 12. Límites conocidos
 
 - **Estimación de tokens.** 4 caracteres por token es una aproximación. Para cifras exactas antes de llamar, usa el endpoint `count_tokens` de la API.
-- **Sin sandbox real.** `run_command` corre dentro de `workspace/` con timeout y sin shell, pero no es un contenedor. Bien para uso local, no para multiusuario.
+- **Sin sandbox real.** `run_command` corre dentro de `workspace/` con timeout y sin shell, pero no es un contenedor: un programa que el agente ejecute puede leer lo que tu usuario lee, `.env` incluido. La protección de secretos cubre `read_file`, `list_dir` y `write_file`. Bien para uso local, no para multiusuario.
 - **Sin streaming.** Cada turno devuelve la respuesta completa. Agregar SSE es el siguiente paso natural.
 - **Historial en memoria.** Se pierde al reiniciar el servidor.
-- **Un proveedor por conversación.** Cambiar de modelo empieza una conversación nueva, porque las firmas y los ids de una API no sirven en la otra.
+- **Interfaz sin framework.** El chat son siete módulos chicos y alcanza. Si crece a muchas pantallas, ver cuándo conviene agregar uno en [`docs/decisiones/0001-interfaz-sin-compilacion.md`](docs/decisiones/0001-interfaz-sin-compilacion.md).
+- **Los agentes frontend y qa piden un modelo capaz.** Por eso usan el modelo principal. Con un modelo local de 8B, el ciclo de pruebas primero suele perderse a mitad de camino: para ese trabajo, usa Claude o Gemini.
+- **Un modelo por conversación.** Cambiar de modelo o de proveedor empieza una conversación nueva, porque las firmas y los ids de una API no sirven en otra, y un historial escrito por un modelo confunde al siguiente.
 - **Modelos locales más limitados.** Un modelo de 8B en Ollama elige peor las herramientas y se pierde antes en tareas largas. Y su ventana real (16k por defecto) se llena mucho más rápido: la compactación aparece en conversaciones cortas.
 - **Gemini sin opciones avanzadas.** El adaptador usa `generateContent` con el nivel de razonamiento por defecto del modelo, sin streaming ni caché. Las pruebas simulan la API con el formato documentado: antes de un taller, haz un turno real con tu clave.
 - **Sin caché de prompt.** La API permite cachear el bloque de sistema y las herramientas para abaratar llamadas repetidas. No cambia el tamaño de la ventana, solo el costo.
+
+---
+
+## Desarrollar este repo con Claude Code
+
+Este repo tiene dos guías porque tiene dos agentes distintos trabajando en él:
+
+| | `AGENTS.md` | `CLAUDE.md` |
+|---|---|---|
+| Quién la lee | El agente que corre dentro del harness | Claude Code, cuando desarrollas el harness |
+| Dónde trabaja ese agente | `workspace/` | El repo entero |
+| Cuándo se carga | Concatenada al system prompt, en cada llamada | Al abrir Claude Code en esta carpeta. Si hay CLAUDE.md, Claude Code no carga AGENTS.md |
+
+`.claude/` completa la guía para Claude Code:
+
+- **`.claude/agents/frontend.md` y `qa.md`.** Los mismos agentes del harness, disponibles para Claude Code. Son envoltorios de pocas líneas: el prompt vive en `harness/agents/`, en un solo lugar, y los dos harnesses lo leen.
+- **`.claude/rules/frontend.md`.** Se carga sola cuando Claude Code abre un archivo de `app/`, `tests/unit/app/` o `docs/casos-de-uso/`, y le pone delante el proceso y las reglas del front end.
+
+```mermaid
+flowchart LR
+    subgraph UNO["Un solo prompt por rol"]
+        F["harness/agents/frontend.md"]
+        Q["harness/agents/qa.md"]
+    end
+    H["Agente del harness<br/>spawn_agent(frontend | qa)"] --> F
+    H --> Q
+    C["Claude Code<br/>.claude/agents/frontend | qa"] --> F
+    C --> Q
+    style UNO fill:#fdf1e8,stroke:#d9641e
+```
+
+Un pedido típico en Claude Code: "Agrega un botón para copiar la última respuesta. Usa el agente frontend y después revisa con qa." El agente `frontend` escribe el caso de uso, la prueba en rojo y el código mínimo, y corre `npm run check`. El agente `qa` devuelve un veredicto con evidencia.
 
 ---
 

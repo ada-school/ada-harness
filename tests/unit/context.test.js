@@ -14,7 +14,7 @@ test("frontmatter: lee claves, también con saltos de línea de Windows y BOM", 
 test("estimateTokens: unos 4 caracteres por token", () => {
   assert.equal(estimateTokens("abcd"), 1);
   assert.equal(estimateTokens("abcde"), 2);
-  assert.equal(estimateTokens({ a: 1 }), Math.ceil(JSON.stringify({ a: 1 }).length / 4));
+  assert.equal(estimateTokens({ a: 1 }), 2, '{"a":1} son 7 caracteres');
 });
 
 test("historyReport: separa usuario, asistente y resultados de herramientas", () => {

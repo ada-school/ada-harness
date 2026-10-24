@@ -27,7 +27,11 @@ const TTL_MS = 5000;
 let cache = { host: null, at: 0, estado: null };
 let secuencia = 0;
 
-// OLLAMA_HOST puede venir como "0.0.0.0:11434" (es la variable con la que el servidor escucha).
+/**
+ * Dónde buscar Ollama. OLLAMA_HOST puede venir como "0.0.0.0:11434" (es la variable con la que
+ * su servidor escucha); se normaliza a una URL con http.
+ * @returns {string}
+ */
 export function host() {
   let h = (process.env.OLLAMA_HOST || "http://localhost:11434").trim().replace(/\/+$/, "");
   if (!/^https?:\/\//.test(h)) h = "http://" + h;
@@ -132,11 +136,20 @@ export const ollama = {
   },
 };
 
+/**
+ * Definición interna -> formato de herramienta de Ollama (igual al de OpenAI).
+ * @param {import("../types.js").ToolDefinition} t
+ */
 export function herramienta(t) {
   return { type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } };
 }
 
-// Historial interno -> messages de Ollama.
+/**
+ * Historial interno -> messages de Ollama. El system va como primer mensaje.
+ * @param {string} system
+ * @param {import("../types.js").Message[]} messages
+ * @returns {any[]}
+ */
 export function haciaOllama(system, messages) {
   const nombres = new Map();
   for (const m of messages)
@@ -148,7 +161,7 @@ export function haciaOllama(system, messages) {
     if (typeof m.content === "string") { out.push({ role: m.role, content: m.content }); continue; }
     if (m.role === "assistant") {
       const texto = m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
-      const pensamiento = m.content.map((b) => b._ollama?.thinking).find(Boolean);
+      const pensamiento = m.content.map((b) => (b.type === "tool_result" ? undefined : b._ollama?.thinking)).find(Boolean);
       const llamadas = m.content.filter((b) => b.type === "tool_use").map((b, i) => ({
         ...(b._ollama?.idPropio ? {} : { id: b.id }),
         function: { index: i, name: b.name, arguments: b.input || {} },
@@ -176,6 +189,7 @@ export function haciaOllama(system, messages) {
 
 /**
  * Respuesta de Ollama -> formato interno.
+ * @param {any} data lo que devuelve /api/chat
  * @returns {import("../types.js").ModelResponse}
  */
 export function desdeOllama(data) {

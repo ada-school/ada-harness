@@ -129,6 +129,26 @@ test("subagente: mismo modelo por defecto, para no cargar un segundo modelo en m
   assert.deepEqual(falso.pedidos[1].messages.map((m) => m.role), ["system", "user"], "el subagente arranca vacío");
 });
 
+test("subagente: routing.json decide si usa el modelo rápido o el principal", async () => {
+  falso.tags = [modelo("qwen3:8b", ["completion", "tools"]), modelo("qwen3:4b", ["completion", "tools"])];
+  await detectar({ forzar: true });
+  process.env.ADA_OLLAMA_FAST_MODEL = "qwen3:4b";
+  try {
+    for (const [agente, esperado] of [["researcher", "qwen3:4b"], ["frontend", "qwen3:8b"]]) {
+      falso.pedidos = [];
+      falso.chats = [
+        chat({ tool_calls: [{ function: { index: 0, name: "spawn_agent", arguments: { agent: agente, task: "tarea" } } }] }),
+        chat({ content: "informe" }),
+        chat({ content: "listo" }),
+      ];
+      await turn({ history: [], userText: "delega", provider: "ollama" });
+      assert.equal(falso.pedidos[0].model, "qwen3:8b", "el principal");
+      assert.deepEqual(falso.pedidos[1].messages.map((m) => m.role), ["system", "user"], `${agente}: la segunda llamada es del subagente`);
+      assert.equal(falso.pedidos[1].model, esperado, agente);
+    }
+  } finally { delete process.env.ADA_OLLAMA_FAST_MODEL; }
+});
+
 test("razonamiento: se separa del texto y vuelve como thinking", () => {
   const r = desdeOllama(chat({ content: "<think>busco el archivo</think>Voy a leerlo.", tool_calls: [{ function: { name: "read_file", arguments: '{"path":"a.js"}' } }] }));
   const [texto, llamada] = r.content;

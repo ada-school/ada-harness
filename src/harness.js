@@ -7,7 +7,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tools, definitions } from "../harness/tools/index.js";
-import { loadRouting, assembleSystem, estimateTokens, historyReport } from "./context.js";
+import { loadRouting, assembleSystem, agentsIndex, estimateTokens, historyReport } from "./context.js";
 import { budgetFor, planCompaction, compact, maybeOffload } from "./window.js";
 import { resolveProvider } from "./providers/index.js";
 
@@ -33,10 +33,9 @@ function callModel(provider, args) {
  */
 export async function runAgent({ messages, agentName = null, routing, trace, provider }) {
   const sys = await assembleSystem({ routing, agentName });
-  const toolDefs = definitions(agentName ? routing.agents[agentName]?.tools : null);
-  if (!agentName) toolDefs.push(SPAWN_DEF);
+  const toolDefs = await toolDefsFor(routing, agentName);
   const maxLoops = agentName ? routing.agents[agentName]?.maxToolLoops ?? 10 : routing.maxToolLoops;
-  const model = agentName ? provider.fastModel() : provider.model();
+  const model = modelFor(routing, provider, agentName);
   const budget = budgetFor(routing, provider, model);
   if (!agentName) trace.budget = budget;
   const fixed = estimateTokens(sys.system) + estimateTokens(toolDefs);
@@ -80,6 +79,28 @@ export async function runAgent({ messages, agentName = null, routing, trace, pro
 }
 
 /**
+ * Las herramientas que ve cada agente: las de routing.json. Solo el principal puede delegar.
+ * @param {Routing} routing
+ * @param {string | null} agentName
+ */
+async function toolDefsFor(routing, agentName) {
+  const defs = definitions(agentName ? routing.agents[agentName]?.tools : null);
+  if (!agentName) defs.push(spawnDefinition(await agentsIndex(routing)));
+  return defs;
+}
+
+/**
+ * Cuánto pesa cada capa fija del agente principal, sin llamar a ningún modelo (npm run capas).
+ * Son las cifras que muestra el inspector en la primera llamada, antes del historial.
+ * @param {Routing} routing
+ * @returns {Promise<import("./types.js").Layer[]>}
+ */
+export async function fixedLayers(routing) {
+  const { layers } = await assembleSystem({ routing });
+  return layers.concat([{ name: "toolDefinitions", tokens: estimateTokens(await toolDefsFor(routing, null)) }]);
+}
+
+/**
  * Ejecuta una herramienta pedida por el modelo. Los errores vuelven como texto: el modelo
  * los lee y puede corregir el rumbo, en vez de cortar el turno.
  * @param {import("./types.js").ToolUseBlock} block
@@ -99,16 +120,36 @@ async function runTool(block, { routing, trace, provider, budget, agentName }) {
 }
 
 // --- subagente: contexto nuevo, mismo loop, informe de vuelta. ---
-/** @type {import("./types.js").ToolDefinition} */
-const SPAWN_DEF = {
-  name: "spawn_agent",
-  description: "Lanza un subagente con un contexto vacío para una tarea acotada. Devuelve solo su informe final. Úsalo para investigar o revisar sin llenar este contexto. Agentes: researcher (explorar y resumir), reviewer (revisar código y correr pruebas).",
-  input_schema: {
-    type: "object",
-    properties: { agent: { type: "string", enum: ["researcher", "reviewer"] }, task: { type: "string", description: "Instrucción completa. El subagente no ve esta conversación." } },
-    required: ["agent", "task"],
-  },
-};
+/**
+ * La herramienta spawn_agent, armada desde el índice de agentes (decisión 0008): agregar un agente
+ * es un archivo en harness/agents/ y una entrada en routing.json, sin tocar este código.
+ * @param {{ name: string, description: string }[]} agentes
+ * @returns {import("./types.js").ToolDefinition}
+ */
+export function spawnDefinition(agentes) {
+  return {
+    name: "spawn_agent",
+    description: "Lanza un subagente con un contexto vacío para una tarea acotada. Devuelve solo su informe final. Úsalo para investigar, revisar o implementar sin llenar este contexto. Agentes: "
+      + agentes.map((a) => `${a.name} (${a.description})`).join(", ") + ".",
+    input_schema: {
+      type: "object",
+      properties: { agent: { type: "string", enum: agentes.map((a) => a.name) }, task: { type: "string", description: "Instrucción completa. El subagente no ve esta conversación." } },
+      required: ["agent", "task"],
+    },
+  };
+}
+
+/**
+ * Qué modelo usa cada agente: el principal para el agente principal y para los que routing.json
+ * marca con "model": "main"; el rápido para el resto.
+ * @param {Routing} routing
+ * @param {Provider} provider
+ * @param {string | null} agentName
+ */
+export function modelFor(routing, provider, agentName) {
+  if (!agentName) return provider.model();
+  return routing.agents[agentName]?.model === "main" ? provider.model() : provider.fastModel();
+}
 
 /**
  * @param {{ agent: string, task: string }} input
@@ -144,5 +185,5 @@ export async function turn({ history, userText, provider: nombre, model }) {
 // `node src/harness.js "mensaje"` sigue funcionando: delega en src/cli.js.
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   const { main } = await import("./cli.js");
-  await main(process.argv.slice(2), turn);
+  await main(process.argv.slice(2), { turn, fixedLayers, loadRouting });
 }

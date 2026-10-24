@@ -10,10 +10,12 @@
   "scripts": {
     "start": "node src/server.js",
     "cli": "node src/harness.js",
+    "capas": "node src/cli.js --capas",
     "test": "node tests/run.js",
     "test:unit": "node tests/run.js unit",
     "test:providers": "node tests/run.js providers",
     "test:integration": "node tests/run.js integration",
+    "trazabilidad": "node tests/trazabilidad.js",
     "typecheck": "tsc -p jsconfig.json",
     "check": "npm run typecheck && npm test"
   },

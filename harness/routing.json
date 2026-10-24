@@ -16,6 +16,8 @@
   },
   "agents": {
     "researcher": { "tools": ["list_dir", "read_file", "web_fetch"], "maxToolLoops": 12 },
-    "reviewer":   { "tools": ["list_dir", "read_file", "run_command"], "maxToolLoops": 10 }
+    "reviewer":   { "tools": ["list_dir", "read_file", "run_command"], "maxToolLoops": 10 },
+    "frontend":   { "tools": ["list_dir", "read_file", "write_file", "run_command", "load_skill"], "maxToolLoops": 40, "model": "main" },
+    "qa":         { "tools": ["list_dir", "read_file", "run_command", "load_skill"], "maxToolLoops": 20, "model": "main" }
   }
 }

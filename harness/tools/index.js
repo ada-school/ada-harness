@@ -4,6 +4,8 @@
 // El modelo nunca ejecuta nada. Propone. Esto ejecuta.
 
 import { promises as fs } from "node:fs";
+import dns from "node:dns";
+import net from "node:net";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -45,6 +47,39 @@ export function resolveWritable(p) {
   const abs = inside(paths.workspace, p);
   if (isProtected(path.relative(paths.workspace, abs))) throw new Error(`Archivo protegido: ${p}`);
   return abs;
+}
+
+/**
+ * ¿Es una dirección de esta máquina o de una red privada? (loopback, 10/8, 172.16/12, 192.168/16,
+ * 169.254/16 de metadatos de nube, 100.64/10, y sus equivalentes en IPv6)
+ * @param {string} ip
+ * @returns {boolean}
+ */
+export function esDireccionInterna(ip) {
+  const v = ip.toLowerCase();
+  if (net.isIPv6(v)) {
+    if (v.startsWith("::ffff:")) return esDireccionInterna(v.slice(7));
+    return v === "::1" || v === "::" || /^f[cd]/.test(v) || /^fe[89ab]/.test(v);
+  }
+  const [a, b] = v.split(".").map(Number);
+  return a === 127 || a === 10 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+    || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+}
+
+/**
+ * web_fetch solo sale a internet (decisión 0006): http o https, y un host que no resuelva a esta
+ * máquina ni a la red interna. Una página leída no puede llevar al agente a tu router ni a tu API local.
+ * @param {string} texto
+ * @returns {Promise<URL>}
+ */
+export async function urlPublica(texto) {
+  let url;
+  try { url = new URL(texto); } catch { throw new Error(`URL no permitida: ${texto}`); }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`URL no permitida: ${texto}`);
+  const nombre = url.hostname.replace(/^\[|\]$/g, "");
+  const ips = net.isIP(nombre) ? [nombre] : (await dns.promises.lookup(nombre, { all: true })).map((d) => d.address);
+  if (ips.some(esDireccionInterna)) throw new Error(`URL no permitida, apunta a la red interna: ${texto}`);
+  return url;
 }
 
 /** @type {Record<string, import("../../src/types.js").Tool>} */
@@ -114,7 +149,16 @@ export const tools = {
       input_schema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
     },
     async run({ url }) {
-      const res = await fetch(url, { headers: { "user-agent": "ada-harness/0.1" } });
+      // las redirecciones se siguen a mano para revisar cada destino
+      let destino = await urlPublica(url);
+      let res;
+      for (let saltos = 0; ; saltos++) {
+        res = await fetch(destino, { headers: { "user-agent": "ada-harness/0.1" }, redirect: "manual" });
+        const siguiente = res.status >= 300 && res.status < 400 && res.headers.get("location");
+        if (!siguiente) break;
+        if (saltos === 4) throw new Error(`demasiadas redirecciones: ${url}`);
+        destino = await urlPublica(new URL(siguiente, destino).href);
+      }
       const html = await res.text();
       return html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 20000);
     },
@@ -151,7 +195,9 @@ export const tools = {
     },
     async run({ path: p, content }) {
       if (!p.startsWith("areas/")) return "error: solo se escribe dentro de areas/. profile.md y preferences.md se editan a mano.";
-      const abs = inside(path.join(paths.memory, "areas"), p.slice("areas/".length));
+      const base = path.join(paths.memory, "areas");
+      const abs = inside(base, p.slice("areas/".length));
+      if (isProtected(path.relative(base, abs))) throw new Error(`Archivo protegido: ${p}`);
       await fs.mkdir(path.dirname(abs), { recursive: true });
       await fs.writeFile(abs, content, "utf8");
       return `ok, memoria guardada en ${p}`;

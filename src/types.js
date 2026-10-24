@@ -66,7 +66,7 @@
  *   keepLastMessagesOnCompact: number,
  *   maxToolLoops: number,
  *   layers: Record<string, any>,
- *   agents: Record<string, { tools: string[], maxToolLoops?: number }>,
+ *   agents: Record<string, { tools: string[], maxToolLoops?: number, model?: "main" | "fast" }>,
  * }} Routing
  */
 

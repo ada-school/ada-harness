@@ -49,13 +49,20 @@ export const gemini = {
 };
 
 // Definición de herramienta del harness -> FunctionDeclaration de Gemini.
-// Nuestros input_schema usan el subconjunto que Gemini acepta en "parameters":
-// type, properties, required, enum, items, description.
+/**
+ * Definición interna -> functionDeclaration de Gemini. Nuestros input_schema usan el subconjunto
+ * que Gemini acepta en "parameters": type, properties, required, enum, items, description.
+ * @param {import("../types.js").ToolDefinition} t
+ */
 export function declaracion(t) {
   return { name: t.name, description: t.description, parameters: t.input_schema };
 }
 
-// Historial interno -> contents de Gemini.
+/**
+ * Historial interno -> contents de Gemini, reponiendo ids y thoughtSignature guardados.
+ * @param {import("../types.js").Message[]} messages
+ * @returns {any[]}
+ */
 export function haciaGemini(messages) {
   // la functionResponse necesita el name de la llamada; lo buscamos por id
   const nombres = new Map();
@@ -68,7 +75,8 @@ export function haciaGemini(messages) {
     if (typeof m.content === "string") return { role, parts: [{ text: m.content }] };
     const parts = [];
     for (const b of m.content) {
-      const firma = b._gemini?.thoughtSignature ? { thoughtSignature: b._gemini.thoughtSignature } : {};
+      const guardada = b.type === "tool_result" ? undefined : b._gemini?.thoughtSignature;
+      const firma = guardada ? { thoughtSignature: guardada } : {};
       if (b.type === "text") {
         if (b.text || firma.thoughtSignature) parts.push({ text: b.text || "", ...firma });
       } else if (b.type === "tool_use") {
@@ -90,6 +98,7 @@ export function haciaGemini(messages) {
 
 /**
  * Respuesta de Gemini -> formato interno.
+ * @param {any} data lo que devuelve generateContent
  * @returns {import("../types.js").ModelResponse}
  */
 export function desdeGemini(data) {

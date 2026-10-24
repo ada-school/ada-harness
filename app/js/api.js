@@ -20,6 +20,7 @@ export async function sendMessage(body) {
   return res.json();
 }
 
+/** CU-04.1 El servidor olvida todas las conversaciones. */
 export async function resetSessions() {
-  await fetch("/api/reset", { method: "POST" });
+  await fetch("/api/reset", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
 }

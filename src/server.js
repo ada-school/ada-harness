@@ -4,7 +4,7 @@
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadEnvFile, port } from "./config.js";
+import { loadEnvFile, port, listenHost, abiertoALaRed } from "./config.js";
 import { createApi, createSessionStore } from "./http/api.js";
 import { serveStatic } from "./http/static.js";
 import { listProviders } from "./providers/index.js";
@@ -36,5 +36,8 @@ async function informar(puerto) {
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   loadEnvFile();
   const puerto = port();
-  createServer().listen(puerto, () => informar(puerto));
+  createServer().listen(puerto, listenHost(), async () => {
+    await informar(puerto);
+    if (abiertoALaRed()) console.log(`Atención: ADA_HOST=${listenHost()} abre el chat a otras máquinas. Cualquiera en tu red puede correr herramientas en este equipo.`);
+  });
 }

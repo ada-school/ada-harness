@@ -2,6 +2,11 @@
 // Las pruebas cambian `state` para armar cada escenario.
 import http from "node:http";
 
+/**
+ * Un servidor HTTP que imita la API de Ollama (/api/tags, /api/show, /api/chat). `state.tags` y
+ * `state.chats` definen qué responde; `state.pedidos` acumula lo que recibió /api/chat.
+ * @returns {Promise<{ state: any, host: string, close: () => Promise<void> }>}
+ */
 export async function startFakeOllama() {
   const state = { tags: /** @type {any[]} */ ([]), show: /** @type {Record<string, any>} */ ({}), chats: /** @type {any[]} */ ([]), pedidos: /** @type {any[]} */ ([]) };
   const server = http.createServer(async (req, res) => {
@@ -18,7 +23,7 @@ export async function startFakeOllama() {
   });
   await new Promise((ok) => server.listen(0, "127.0.0.1", () => ok(null)));
   const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
-  return { state, host: `127.0.0.1:${port}`, close: () => new Promise((ok) => server.close(() => ok(null))) };
+  return { state, host: `127.0.0.1:${port}`, close: () => new Promise((ok) => server.close(() => ok())) };
 }
 
 /** Un modelo como lo lista /api/tags. */

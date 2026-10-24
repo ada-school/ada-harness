@@ -5,7 +5,7 @@ Este archivo se concatena al system prompt en cada llamada. Es la capa de guía 
 ## Sobre este proyecto
 
 - Nombre: ADA Harness (plantilla). Reemplaza esta sección con la descripción de tu proyecto.
-- Stack: Node 18+, sin dependencias. Si agregas una, justifícala en el PR.
+- Stack: Node 18+, sin dependencias para correr. Si agregas una, escribe antes la decisión en `docs/decisiones/`.
 - Todo el trabajo del agente ocurre dentro de `workspace/`. Fuera de esa carpeta solo se lee.
 
 ## Comandos
@@ -19,9 +19,10 @@ Este archivo se concatena al system prompt en cada llamada. Es la capa de guía 
 1. Antes de escribir código, lee el archivo que vas a cambiar. No reconstruyas contenido de memoria.
 2. Cambios pequeños y verificables. Un turno, una intención.
 3. Si una tarea tiene más de 3 pasos, escribe el plan en `workspace/PLAN.md` y avanza marcando cada paso.
-4. Investigación y revisión van en subagentes (`spawn_agent`). No llenes el contexto principal con resultados crudos.
+4. Investigación, revisión, front end y QA van en subagentes (`spawn_agent`). No llenes el contexto principal con resultados crudos.
 5. Si algo falla, reporta el error exacto. No lo tapes con un intento distinto en silencio.
 6. Escribe en español neutro, sin guiones conectores. Usa comas, puntos o dos puntos.
+7. Front end: primero el caso de uso, después la prueba, al final el código (skill `frontend-tdd`).
 
 ## Qué no tocar
 

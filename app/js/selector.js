@@ -39,6 +39,9 @@ export function buildOptions(providers) {
   return grupos;
 }
 
+/** CU-02.7 Lo que dice la conversación cuando pickSelection() no encuentra ningún modelo. */
+export const SIN_MODELOS = "Ningún modelo disponible. Agrega una clave en .env, o instala Ollama y descarga un modelo: ollama pull qwen3:8b";
+
 /**
  * Qué opción queda elegida: la actual, la guardada, la que el servidor marca por defecto, o la primera.
  * @param {{ grupos: Grupo[], providers: any[], current?: string | null, saved?: string | null }} p

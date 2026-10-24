@@ -20,9 +20,9 @@ export async function loadRouting() {
   return JSON.parse(await fs.readFile(paths.routing, "utf8"));
 }
 
-/** @param {string} p ruta relativa a la raíz del repo */
+/** @param {string} p ruta relativa a la raíz del repo, o absoluta @returns {Promise<string>} */
 async function readIfExists(p) {
-  try { return await fs.readFile(path.join(ROOT, p), "utf8"); } catch { return ""; }
+  try { return await fs.readFile(path.resolve(ROOT, p), "utf8"); } catch { return ""; }
 }
 
 /**
@@ -36,6 +36,29 @@ export function frontmatter(txt) {
   const out = {};
   if (m) for (const line of m[1].split(/\r?\n/)) { const i = line.indexOf(":"); if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim(); }
   return out;
+}
+
+/**
+ * El texto sin su frontmatter: lo que un agente recibe como prompt.
+ * @param {string} txt
+ */
+export function sinFrontmatter(txt) {
+  return txt.replace(/^\uFEFF/, "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+}
+
+/**
+ * Índice de agentes (decisión 0008): nombre y descripción de cada agente que declara routing.json.
+ * El cuerpo de su archivo entra solo cuando se lanza ese agente, como su system prompt.
+ * @param {import("./types.js").Routing} routing
+ * @returns {Promise<{ name: string, description: string }[]>}
+ */
+export async function agentsIndex(routing) {
+  const indice = [];
+  for (const nombre of Object.keys(routing.agents || {})) {
+    const fm = frontmatter(await readIfExists(`harness/agents/${nombre}.md`));
+    indice.push({ name: fm.name || nombre, description: fm.description || "" });
+  }
+  return indice;
 }
 
 /**
@@ -58,16 +81,16 @@ export async function skillsIndex(dir) {
 }
 
 /**
- * Índice de memoria: ruta + description de cada archivo en areas/.
- * @param {string} dir relativa a la raíz
+ * Índice de memoria: ruta + description de cada archivo en paths.memory/areas (ADA_MEMORY la mueve).
+ * @returns {Promise<string>}
  */
-export async function memoryIndex(dir) {
-  const abs = path.join(ROOT, dir);
+export async function memoryIndex() {
+  const abs = path.join(paths.memory, "areas");
   let files = [];
   try { files = (await fs.readdir(abs)).filter((f) => f.endsWith(".md")); } catch { return ""; }
   const lines = [];
   for (const f of files) {
-    const fm = frontmatter(await readIfExists(path.join(dir, f)));
+    const fm = frontmatter(await readIfExists(path.join(abs, f)));
     lines.push(`- areas/${f}: ${fm.description || ""}`);
   }
   return lines.length ? "Memoria por tema (lee con read_memory si la conversación lo toca):\n" + lines.join("\n") : "Memoria por tema: (vacía)";
@@ -85,16 +108,16 @@ export async function assembleSystem({ routing, agentName = null }) {
 
   if (agentName) {
     // Un subagente arranca con su propio prompt y la guía del proyecto. Nada más.
-    add("system (agente: " + agentName + ")", await readIfExists(`harness/agents/${agentName}.md`));
+    add("system (agente: " + agentName + ")", sinFrontmatter(await readIfExists(`harness/agents/${agentName}.md`)));
     add("projectGuide", await readIfExists(routing.layers.projectGuide.source));
   } else {
     add("system", await readIfExists(routing.layers.system.source));
     add("projectGuide", await readIfExists(routing.layers.projectGuide.source));
     add("skillsIndex", await skillsIndex(routing.layers.skillsIndex.source));
     const core = [];
-    for (const p of routing.layers.memoryCore.source) core.push(await readIfExists(p));
+    for (const nombre of ["profile.md", "preferences.md"]) core.push(await readIfExists(path.join(paths.memory, nombre)));
     add("memoryCore", core.filter(Boolean).join("\n\n"));
-    add("memoryIndex", await memoryIndex(routing.layers.memoryIndex.source));
+    add("memoryIndex", await memoryIndex());
   }
 
   const system = layers.map((l) => `<${l.name.split(" ")[0]}>\n${l.text.trim()}\n</${l.name.split(" ")[0]}>`).join("\n\n");

@@ -1,6 +1,6 @@
 // Utilidades de presentación, sin DOM.
 
-/** @param {number} n */
+/** @param {number | undefined} n */
 export const num = (n) => Number(n || 0).toLocaleString("es-CO");
 
 /** Color de cada capa: el mismo del explicador y de styles.css. */
