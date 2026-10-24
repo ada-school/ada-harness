@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tools, definitions } from "../harness/tools/index.js";
 import { ROOT, loadRouting, assembleSystem, estimateTokens, historyReport } from "./context.js";
-import { getProvider } from "./providers/index.js";
+import { resolveProvider } from "./providers/index.js";
 
 // --- la llamada. Lo único que el modelo "hace". El proveedor traduce ida y vuelta. ---
 // Entra y sale en formato interno: bloques text, tool_use y tool_result.
@@ -43,8 +43,9 @@ async function compact(messages, routing, trace, provider) {
 }
 
 // --- resultados grandes se van a disco y dejan una referencia. ---
-async function maybeOffload(name, result, routing) {
-  const limit = routing.layers.toolResults.offloadAbove;
+async function maybeOffload(name, result, routing, budget) {
+  // con ventanas chicas (modelos locales) un resultado de 6k tokens ya es demasiado: el límite escala
+  const limit = Math.min(routing.layers.toolResults.offloadAbove, Math.floor(budget * 0.25));
   if (estimateTokens(result) <= limit) return result;
   const dir = path.join(ROOT, routing.layers.toolResults.offloadTo);
   await fs.mkdir(dir, { recursive: true });
@@ -55,20 +56,33 @@ async function maybeOffload(name, result, routing) {
 }
 
 // --- el loop. Sirve para el agente principal y para subagentes. ---
-export async function runAgent({ messages, agentName = null, routing, trace, provider = getProvider() }) {
+export async function runAgent({ messages, agentName = null, routing, trace, provider }) {
   const sys = await assembleSystem({ routing, agentName });
   const allowed = agentName ? routing.agents[agentName]?.tools : null;
   const toolDefs = definitions(allowed);
   if (!agentName) toolDefs.push(SPAWN_DEF);
   const maxLoops = agentName ? routing.agents[agentName]?.maxToolLoops ?? 10 : routing.maxToolLoops;
-  const budget = routing.contextBudgetTokens;
+  const model = agentName ? provider.fastModel() : provider.model();
+  // El presupuesto es el menor entre routing.json y la ventana real del modelo (Ollama: num_ctx).
+  const budget = Math.min(routing.contextBudgetTokens, provider.contextWindow?.(model) ?? Infinity);
+  if (!agentName) trace.budget = budget;
+  const fijo = estimateTokens(sys.system) + estimateTokens(toolDefs);
+  let avisado = false;
 
   for (let loop = 0; loop < maxLoops; loop++) {
     // ¿la ventana se acerca al presupuesto? compactar antes de llamar.
-    const used = estimateTokens(sys.system) + estimateTokens(toolDefs) + historyReport(messages).reduce((a, l) => a + l.tokens, 0);
-    if (used > budget * routing.compactAt) messages = await compact(messages, routing, trace, provider);
+    const used = fijo + historyReport(messages).reduce((a, l) => a + l.tokens, 0);
+    if (used > budget * routing.compactAt) {
+      if (fijo > budget * routing.compactAt) {
+        // sistema + herramientas ya llenan la ventana: resumir el historial no libera nada
+        if (!avisado) trace.events.push({ type: "warning", text: `ventana de ${budget} tokens: sistema y herramientas ya ocupan ~${fijo}. Sube ADA_OLLAMA_NUM_CTX.` });
+        avisado = true;
+      } else {
+        messages = await compact(messages, routing, trace, provider);
+      }
+    }
 
-    const r = await callModel(provider, { model: agentName ? provider.fastModel() : provider.model(), system: sys.system, messages, tools: toolDefs });
+    const r = await callModel(provider, { model, system: sys.system, messages, tools: toolDefs });
     trace.calls++;
     trace.lastContext = { layers: sys.layers.concat([{ name: "toolDefinitions", tokens: estimateTokens(toolDefs) }], historyReport(messages)), usage: r.usage };
     messages.push({ role: "assistant", content: r.content });
@@ -85,7 +99,7 @@ export async function runAgent({ messages, agentName = null, routing, trace, pro
         out = block.name === "spawn_agent"
           ? await spawnAgent(block.input, routing, trace, provider)
           : await tools[block.name].run(block.input);
-        out = await maybeOffload(block.name, String(out), routing);
+        out = await maybeOffload(block.name, String(out), routing, budget);
       } catch (e) {
         out = `error: ${e.message}`;
       }
@@ -117,22 +131,23 @@ async function spawnAgent({ agent, task }, routing, trace, provider) {
 }
 
 // --- un turno completo, usado por el servidor. ---
-export async function turn({ history, userText, provider: nombre }) {
+export async function turn({ history, userText, provider: nombre, model }) {
   const routing = await loadRouting();
-  const provider = getProvider(nombre);
+  const provider = await resolveProvider(nombre, model);
   const trace = { calls: 0, tools: [], events: [], lastContext: null, provider: provider.name, model: provider.model() };
   const messages = history.concat([{ role: "user", content: userText }]);
   const { text, messages: next } = await runAgent({ messages, routing, trace, provider });
   return { text, history: next, trace };
 }
 
-// --- uso desde la terminal: node src/harness.js [--gemini | --anthropic] "mensaje" ---
+// --- uso desde la terminal: node src/harness.js [--anthropic | --gemini | --ollama] [--model=nombre] "mensaje" ---
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   await import("./env.js");
   const args = process.argv.slice(2);
-  const flag = args.find((a) => a.startsWith("--"));
+  const flag = args.find((a) => a.startsWith("--") && !a.startsWith("--model="));
+  const model = args.find((a) => a.startsWith("--model="))?.slice(8);
   const msg = args.filter((a) => !a.startsWith("--")).join(" ") || "Lista los archivos del workspace y dime qué hay.";
-  turn({ history: [], userText: msg, provider: flag ? flag.slice(2) : undefined }).then(({ text, trace }) => {
+  turn({ history: [], userText: msg, provider: flag ? flag.slice(2) : undefined, model }).then(({ text, trace }) => {
     console.log(text);
     console.error(`\n[${trace.provider} · ${trace.model} · ${trace.calls} llamadas, ${trace.tools.length} herramientas]`);
   }).catch((e) => { console.error(e.message); process.exit(1); });

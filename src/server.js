@@ -1,6 +1,6 @@
 // Servidor mínimo: sirve app/ y docs/, y expone la API del chat.
-//   GET  /api/providers  proveedores disponibles y si tienen clave
-//   POST /api/chat       { session, message, provider? }  ->  { text, trace, reset? }
+//   GET  /api/providers  proveedores disponibles: claves, y Ollama detectado con sus modelos
+//   POST /api/chat       { session, message, provider?, model? }  ->  { text, trace, reset? }
 //   POST /api/reset      borra todas las sesiones
 // Sin dependencias. Node 18+.
 
@@ -10,7 +10,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { ROOT } from "./context.js";
 import { turn } from "./harness.js";
-import { getProvider, listProviders } from "./providers/index.js";
+import { resolveProvider, listProviders } from "./providers/index.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
@@ -25,18 +25,18 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/chat") {
       let body = "";
       for await (const c of req) body += c;
-      const { session = "default", message, provider } = JSON.parse(body || "{}");
+      const { session = "default", message, provider, model } = JSON.parse(body || "{}");
       if (!message) return json(res, 400, { error: "message requerido" });
-      const prov = getProvider(provider);
+      const prov = await resolveProvider(provider, model);
       const previa = sessions.get(session);
       const reset = Boolean(previa && previa.provider !== prov.name);
       const history = previa && !reset ? previa.history : [];
-      const out = await turn({ history, userText: message, provider: prov.name });
+      const out = await turn({ history, userText: message, provider: prov.name, model });
       sessions.set(session, { provider: prov.name, history: out.history });
       return json(res, 200, { text: out.text, trace: out.trace, reset });
     }
     if (req.method === "GET" && req.url === "/api/providers") {
-      return json(res, 200, { providers: listProviders() });
+      return json(res, 200, { providers: await listProviders() });
     }
     if (req.method === "POST" && req.url === "/api/reset") {
       sessions.clear();
@@ -61,9 +61,16 @@ function json(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-server.listen(PORT, () => {
-  const disponibles = listProviders().filter((p) => p.configured).map((p) => `${p.label} (${p.model})`);
+server.listen(PORT, async () => {
+  const lista = await listProviders();
+  const conClave = lista.filter((p) => p.configured && p.keyEnv).map((p) => `${p.label} (${p.model})`);
+  const o = lista.find((p) => p.name === "ollama")?.status;
+  const locales = (o?.models || []).filter((m) => m.tools).map((m) => m.name + (m.remote ? " (nube)" : ""));
   console.log(`ADA Harness en http://localhost:${PORT}`);
-  console.log(`Proveedores con clave: ${disponibles.join(", ") || "ninguno, revisa .env"}`);
+  console.log(`Con clave: ${conClave.join(", ") || "ninguno"}`);
+  console.log(o?.detected
+    ? `Ollama en ${o.host}: ${locales.length ? locales.join(", ") : "sin modelos con herramientas (prueba: ollama pull qwen3:8b)"}`
+    : `Ollama: ${o?.reason}. Para modelos locales gratis: https://ollama.com/download`);
+  if (!lista.some((p) => p.configured)) console.log("Ningún proveedor listo: agrega una clave en .env o corre Ollama con un modelo.");
   console.log(`Explicador en http://localhost:${PORT}/docs/Anatom%C3%ADa%20de%20un%20Agente.html`);
 });

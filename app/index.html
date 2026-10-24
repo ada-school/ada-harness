@@ -84,33 +84,60 @@ aside h2{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(-
 </aside>
 
 <script>
-const BUDGET=120000;
+let BUDGET=120000;
 const COLORS={system:'--l-sys',projectGuide:'--l-route',skillsIndex:'--l-skill',memoryCore:'--l-mem',memoryIndex:'--l-mem',toolDefinitions:'--l-tools','history (user)':'--l-user','history (assistant)':'--model',toolResults:'--l-res'};
 const $=id=>document.getElementById(id);
 const log=$('log'),t=$('t'),send=$('send');
 const session='s'+Math.random().toString(36).slice(2);
 const prov=$('prov');
 let proveedores=[];
-// Proveedores con clave: los sin clave aparecen deshabilitados y dicen qué variable falta.
+const esc=x=>String(x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// El valor de cada opción es "proveedor|modelo". Claude y Gemini: un modelo. Ollama: cada modelo instalado.
+function opciones(){
+  let html='';
+  for(const p of proveedores){
+    if(p.name!=='ollama'){
+      html+=`<option value="${p.name}|" ${p.configured?'':'disabled'}>${p.label} · ${esc(p.model)}${p.configured?'':' (falta '+p.keyEnv+')'}</option>`;
+      continue;
+    }
+    const st=p.status||{};
+    html+=`<optgroup label="Ollama · ${esc(st.host||'')}">`;
+    if(!st.detected) html+=`<option disabled>No detectado: instala Ollama y corre "ollama serve"</option>`;
+    else if(!st.models.length) html+=`<option disabled>Sin modelos: ollama pull qwen3:8b</option>`;
+    for(const m of (st.models||[])){
+      const etiqueta=!m.tools?'no usa herramientas':m.remote?'nube, requiere cuenta':'local, gratis';
+      html+=`<option value="ollama|${esc(m.name)}" ${m.tools?'':'disabled'}>${esc(m.name)}${m.params?' · '+esc(m.params):''} (${etiqueta})</option>`;
+    }
+    html+='</optgroup>';
+  }
+  return html;
+}
 async function cargarProveedores(){
   try{
     const d=await (await fetch('/api/providers')).json(); proveedores=d.providers;
-    let guardado=null; try{guardado=localStorage.getItem('ada-proveedor')}catch{}
-    prov.innerHTML=proveedores.map(p=>`<option value="${p.name}" ${p.configured?'':'disabled'}>${p.label} · ${p.model}${p.configured?'':' (falta '+p.keyEnv+')'}</option>`).join('');
-    const elegido=proveedores.find(p=>p.name===guardado&&p.configured)||proveedores.find(p=>p.default);
-    if(elegido) prov.value=elegido.name;
+    const actual=prov.value; let guardado=null; try{guardado=localStorage.getItem('ada-proveedor')}catch{}
+    prov.innerHTML=opciones();
+    const validas=[...prov.options].filter(o=>!o.disabled).map(o=>o.value);
+    const def=proveedores.find(p=>p.default);
+    const porDefecto=def?(def.name==='ollama'?`ollama|${def.model}`:`${def.name}|`):'';
+    const elegido=[actual,guardado,porDefecto].find(v=>v&&validas.includes(v))||validas[0];
+    if(elegido) prov.value=elegido;
+    if(!validas.length) add('s','Ningún modelo disponible. Agrega una clave en .env, o instala Ollama y descarga un modelo: ollama pull qwen3:8b');
   }catch(e){prov.innerHTML='<option>sin servidor</option>'}
 }
+const elegido=()=>{const [provider,model]=prov.value.split('|');return {provider,model:model||undefined}};
+prov.addEventListener('focus',cargarProveedores);   // por si arrancaste Ollama con la página abierta
 prov.addEventListener('change',()=>{
   try{localStorage.setItem('ada-proveedor',prov.value)}catch{}
-  const p=proveedores.find(x=>x.name===prov.value);
+  const {provider,model}=elegido(); const p=proveedores.find(x=>x.name===provider);
   log.innerHTML='';
-  add('s',`Ahora hablas con ${p.label} (${p.model}). Conversación nueva: el loop, las capas y las herramientas son los mismos; solo cambia el adaptador de src/providers/.`);
+  add('s',`Ahora hablas con ${p.label} (${model||p.model}). Conversación nueva: el loop, las capas y las herramientas son los mismos; solo cambia el adaptador de src/providers/.`);
 });
 cargarProveedores();
 function add(cls,text){const d=document.createElement('div');d.className='msg '+cls;d.textContent=text;log.appendChild(d);log.scrollTop=log.scrollHeight;return d}
 function inspect(tr){
-  if(tr.provider) $('modelo').textContent=`proveedor: ${tr.provider} · ${tr.model}`;
+  if(tr.provider) $('modelo').textContent=`proveedor: ${tr.provider} · ${tr.model}`+(tr.budget?` · ventana ${tr.budget.toLocaleString('es-CO')}`:'');
+  if(tr.budget) BUDGET=tr.budget;
   if(!tr.lastContext)return;
   const L=tr.lastContext.layers;const tot=L.reduce((a,l)=>a+l.tokens,0);
   $('meter').innerHTML=L.map(l=>`<i style="background:var(${COLORS[l.name.split(' (')[0]]||COLORS[l.name]||'--fg2'});flex:0 0 ${(l.tokens/BUDGET*100).toFixed(2)}%" title="${l.name}"></i>`).join('');
@@ -120,12 +147,12 @@ function inspect(tr){
   $('intok').textContent=(tr.lastContext.usage?.input_tokens??0).toLocaleString('es-CO');
   const ev=[];
   for(const x of tr.tools)ev.push(`<div class="tool">${x.agent?'['+x.agent+'] ':''}${x.name}(${JSON.stringify(x.input).slice(0,60)}) → ~${x.tokens} tok</div>`);
-  for(const e of tr.events)ev.push(e.type==='compact'?`<div class="cmp">compactación: ${e.droppedMessages} mensajes → resumen de ~${e.summaryTokens} tok</div>`:`<div class="sub">subagente ${e.agent}: ${e.calls} llamadas, ${e.tools} herramientas</div>`);
+  for(const e of tr.events)ev.push(e.type==='compact'?`<div class="cmp">compactación: ${e.droppedMessages} mensajes → resumen de ~${e.summaryTokens} tok</div>`:e.type==='warning'?`<div class="cmp">aviso: ${esc(e.text)}</div>`:`<div class="sub">subagente ${e.agent}: ${e.calls} llamadas, ${e.tools} herramientas</div>`);
   $('events').innerHTML=ev.join('')||'<div class="empty">Sin herramientas en este turno.</div>';
 }
 $('f').addEventListener('submit',async e=>{e.preventDefault();const msg=t.value.trim();if(!msg)return;
   add('u',msg);t.value='';send.disabled=true;const w=add('s','pensando…');
-  try{const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session,message:msg,provider:prov.value})});
+  try{const r=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session,message:msg,...elegido()})});
     const d=await r.json();w.remove();if(d.error)add('s','error: '+d.error);else{if(d.reset)add('s','Cambiaste de proveedor: empezó una conversación nueva.');add('a',d.text);inspect(d.trace)}}
   catch(err){w.textContent='error: '+err.message}
   send.disabled=false;t.focus()});

@@ -1,7 +1,7 @@
 {
   "name": "ada-harness",
   "version": "0.1.0",
-  "description": "Plantilla mínima de un AI Harness: capas de contexto, loop agéntico, compactación y subagentes, con un chat minimalista. Funciona con Claude y Gemini.",
+  "description": "Plantilla mínima de un AI Harness: capas de contexto, loop agéntico, compactación y subagentes, con un chat minimalista. Funciona con Claude, Gemini y modelos locales con Ollama.",
   "type": "module",
   "license": "MIT",
   "engines": {

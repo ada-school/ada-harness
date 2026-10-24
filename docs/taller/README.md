@@ -14,7 +14,15 @@ node src/server.js                        # abre http://localhost:3000
 
 En Windows, PowerShell acepta los mismos comandos. Abre el chat siempre en `http://localhost:3000`, nunca con doble clic sobre el HTML.
 
-Sirve una clave de Claude (`ANTHROPIC_API_KEY`) o de Gemini (`GEMINI_API_KEY`); el selector "Modelo" del chat muestra las que tengas. Sin Node 18 o sin clave: trabaja con una pareja que lo tenga.
+Sirve una clave de Claude (`ANTHROPIC_API_KEY`) o de Gemini (`GEMINI_API_KEY`); el selector "Modelo" del chat muestra las que tengas.
+
+**Sin clave:** instala [Ollama](https://ollama.com/download) y descarga un modelo **antes del taller** (son unos 5 GB; el wifi de la sala no da para que todos lo bajen a la vez):
+
+```bash
+ollama pull qwen3:8b
+```
+
+Con Ollama corriendo, el harness lo detecta solo y el modelo aparece en el selector como "local, gratis". Sin Node 18 ni ninguna de estas opciones: trabaja con una pareja que lo tenga.
 
 ## Qué hay aquí
 
@@ -45,7 +53,9 @@ Para probar el ejemplo resuelto: `cp -r docs/taller/documentar-funcion harness/s
 |---|---|
 | No aparece `load_skill` | La `description` es vaga. Escríbela como "Cárgalo cuando pidan X" y usa la palabra X en tu pedido. |
 | `load_skill` da error | El `name` no coincide con la carpeta, o el archivo no se llama `SKILL.md`. |
-| Falta la clave (`ANTHROPIC_API_KEY` o `GEMINI_API_KEY`) | Copia `.env.example` a `.env`, pega la clave y reinicia el servidor. |
+| Falta la clave (`ANTHROPIC_API_KEY` o `GEMINI_API_KEY`) | Copia `.env.example` a `.env`, pega la clave y reinicia el servidor. O usa Ollama, sin clave. |
+| "Ollama: no detectado" | Abre la app de Ollama o corre `ollama serve`, y vuelve a abrir el selector "Modelo". |
+| Con Ollama, el agente no carga tu skill | Los modelos locales son más literales: usa en tu pedido las mismas palabras de la `description`. |
 | "Failed to fetch" en el chat | Abriste el HTML con doble clic. Entra por `http://localhost:3000`. |
 
 ## Para casa

@@ -15,6 +15,8 @@ function simular(respuestas) {
   const pedidos = [];
   const original = globalThis.fetch;
   globalThis.fetch = async (url, opt) => {
+    // en estas pruebas no hay Ollama corriendo: la detección falla como en una máquina sin él
+    if (String(url).includes("/api/tags")) throw new TypeError("fetch failed");
     pedidos.push({ url: String(url), headers: opt.headers, body: JSON.parse(opt.body) });
     const r = respuestas.shift();
     if (!r) throw new Error("la simulación se quedó sin respuestas");
