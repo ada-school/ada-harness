@@ -12,9 +12,10 @@ Guía para Claude Code cuando desarrollas este repo: el harness, su chat y su do
 
 | Comando | Qué hace |
 |---|---|
-| `npm start` | Chat en http://localhost:3000. No necesita `npm install` |
-| `npm run cli -- "mensaje"` | Un turno desde la terminal |
+| `npm start` | Chat en http://localhost:3000. Es `ada serve`. No necesita `npm install` |
+| `npm run cli -- "mensaje"` | Un turno desde la terminal. Es `ada run` |
 | `npm run capas` | Peso de cada capa fija del agente principal, sin llamar a un modelo |
+| `node bin/ada.js --help` | El comando único: chat, turno o capas |
 | `npm test` | Todas las pruebas: unit, providers e integration |
 | `npm run test:unit` | Una capa (también `test:providers`, `test:integration`) |
 | `npm run trazabilidad` | Cada criterio de los casos de uso contra las pruebas que lo cubren |
@@ -29,8 +30,9 @@ Guía para Claude Code cuando desarrollas este repo: el harness, su chat y su do
 | Qué tiene que lograr cada pantalla | `docs/casos-de-uso/` |
 | Cómo se construye el front end | `harness/skills/frontend-tdd/SKILL.md` (proceso) y `arquitectura.md` (reglas) |
 | El loop, el contexto y la ventana | `src/harness.js`, `src/context.js`, `src/window.js` |
+| El comando | `bin/ada.js`, argumentos en `src/cli.js` |
 | Proveedores de modelos | `src/providers/`, contrato `Provider` en `src/types.js` |
-| Herramientas y sandbox | `harness/tools/index.js`, `src/config.js` |
+| Herramientas y sandbox | `harness/tools/index.js`, `src/config.js`, `src/validation.js` |
 | Agentes del harness | `harness/agents/*.md` y `harness/routing.json` → `agents` |
 | El chat | `app/` (sin compilación) |
 | Pruebas | `tests/unit/`, `tests/providers/`, `tests/integration/`, `tests/helpers/` |

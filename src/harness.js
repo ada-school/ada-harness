@@ -10,6 +10,7 @@ import { tools, definitions } from "../harness/tools/index.js";
 import { loadRouting, assembleSystem, agentsIndex, estimateTokens, historyReport } from "./context.js";
 import { budgetFor, planCompaction, compact, maybeOffload } from "./window.js";
 import { resolveProvider } from "./providers/index.js";
+import { validateInput } from "./validation.js";
 
 /** @typedef {import("./types.js").Message} Message */
 /** @typedef {import("./types.js").Provider} Provider */
@@ -108,11 +109,17 @@ export async function fixedLayers(routing) {
  */
 async function runTool(block, { routing, trace, provider, budget, agentName }) {
   try {
-    const tool = tools[block.name];
-    if (block.name === "spawn_agent" && !agentName) {
+    if (block.name === "spawn_agent") {
+      if (agentName) return "error: herramienta desconocida spawn_agent";
+      const schema = spawnDefinition(await agentsIndex(routing)).input_schema;
+      const errores = validateInput(block.input, schema);
+      if (errores.length) return `error: entrada inválida\n${errores.join("\n")}`;
       return await maybeOffload(block.name, await spawnAgent(/** @type {{ agent: string, task: string }} */ (block.input), routing, trace, provider), routing, budget);
     }
+    const tool = tools[block.name];
     if (!tool) return `error: herramienta desconocida ${block.name}`;
+    const errores = validateInput(block.input, tool.definition.input_schema);
+    if (errores.length) return `error: entrada inválida\n${errores.join("\n")}`;
     return await maybeOffload(block.name, String(await tool.run(block.input)), routing, budget);
   } catch (e) {
     return `error: ${e.message}`;
@@ -133,8 +140,9 @@ export function spawnDefinition(agentes) {
       + agentes.map((a) => `${a.name} (${a.description})`).join(", ") + ".",
     input_schema: {
       type: "object",
-      properties: { agent: { type: "string", enum: agentes.map((a) => a.name) }, task: { type: "string", description: "Instrucción completa. El subagente no ve esta conversación." } },
+      properties: { agent: { type: "string", enum: agentes.map((a) => a.name) }, task: { type: "string", minLength: 1, maxLength: 20000, description: "Instrucción completa. El subagente no ve esta conversación." } },
       required: ["agent", "task"],
+      additionalProperties: false,
     },
   };
 }
@@ -183,7 +191,8 @@ export async function turn({ history, userText, provider: nombre, model }) {
 }
 
 // `node src/harness.js "mensaje"` sigue funcionando: delega en src/cli.js.
+// No importa el servidor aquí: api.js importa este archivo, y un await a server.js no termina.
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   const { main } = await import("./cli.js");
-  await main(process.argv.slice(2), { turn, fixedLayers, loadRouting });
+  await main(process.argv.slice(2), { turn, fixedLayers, loadRouting, defaultCommand: "run" });
 }

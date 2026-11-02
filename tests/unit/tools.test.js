@@ -50,6 +50,18 @@ test("workspace: con ADA_WORKSPACE en un proyecto real, su .env y su .git tampoc
   }
 });
 
+test("read_file y write_file rechazan escapar por un enlace simbólico", async () => {
+  const afuera = ws.dir + "-hermano";
+  await fs.mkdir(afuera, { recursive: true });
+  await fs.writeFile(path.join(afuera, "secreto.txt"), "secreto externo");
+  await fs.symlink(afuera, path.join(ws.dir, "atajo"), "dir");
+  await fs.symlink(path.join(afuera, "secreto.txt"), path.join(ws.dir, "link.txt"));
+  await assert.rejects(tools.read_file.run({ path: "atajo/secreto.txt" }), /enlace simbólico/);
+  await assert.rejects(tools.write_file.run({ path: "atajo/nuevo.txt", content: "x" }), /enlace simbólico/);
+  await assert.rejects(tools.list_dir.run({ path: "atajo" }), /enlace simbólico/);
+  await assert.rejects(tools.read_file.run({ path: "link.txt" }), /enlace simbólico/);
+});
+
 test("read_file y write_file trabajan en el workspace", async () => {
   const ok = await tools.write_file.run({ path: "notas/hola.txt", content: "uno\ndos" });
   assert.match(ok, /^ok, 7 bytes/);
@@ -75,6 +87,15 @@ test("read_memory y el índice de memoria siguen a ADA_MEMORY", async () => {
 test("write_memory: tampoco escribe .env ni .git dentro de areas/", async () => {
   await assert.rejects(tools.write_memory.run({ path: "areas/.env", content: "x" }), /Archivo protegido/);
   await assert.rejects(tools.write_memory.run({ path: "areas/sub/.git/config", content: "x" }), /Archivo protegido/);
+});
+
+test("read_memory y load_skill no leen nombres protegidos ni salen por un enlace", async () => {
+  await assert.rejects(tools.read_memory.run({ path: ".env" }), /Archivo protegido/);
+  await assert.rejects(tools.load_skill.run({ name: ".env" }), /Archivo protegido/);
+  const afuera = ws.dir + "-hermano";
+  await fs.mkdir(afuera, { recursive: true });
+  await fs.symlink(afuera, path.join(mem.dir, "areas", "atajo"), "dir");
+  await assert.rejects(tools.write_memory.run({ path: "areas/atajo/x.md", content: "x" }), /enlace simbólico/);
 });
 
 test("web_fetch: solo http y https hacia internet; nunca esta máquina ni la red interna", async () => {

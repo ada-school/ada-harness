@@ -22,6 +22,10 @@ Una decisión que no se verifica en ningún lado es una sugerencia. Si puedes es
 | [0006](0006-sandbox-y-archivos-protegidos.md) | Las herramientas no salen del workspace ni tocan secretos | Aceptada | `tests/unit/tools.test.js` |
 | [0007](0007-casos-de-uso-y-tdd.md) | El front end se construye con casos de uso y pruebas primero | Aceptada | `tests/unit/casos-de-uso.test.js` |
 | [0008](0008-agentes-por-archivo.md) | Un agente es un archivo y una entrada en routing.json | Aceptada | `tests/unit/agentes.test.js` |
+| [0009](0009-validacion-de-herramientas.md) | El servidor valida los argumentos de cada herramienta | Aceptada | `tests/unit/validation.test.js`, `tests/unit/harness.test.js` |
+| [0010](0010-comando-unico.md) | Un comando para el chat y para la terminal | Aceptada | `tests/unit/http-cli.test.js`, `tests/unit/arquitectura.test.js` |
+
+El backlog de lo que sigue, y de lo que esta revisión dejó afuera, está en [`docs/BACKLOG.md`](../BACKLOG.md).
 
 ## Cómo escribir una
 

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { resolveStatic } from "../../src/http/static.js";
 import { createSessionStore, peticionPermitida } from "../../src/http/api.js";
-import { parseArgs } from "../../src/cli.js";
+import { parseArgs, ayuda } from "../../src/cli.js";
 import { paths, listenHost } from "../../src/config.js";
 
 test("estáticos: el chat, sus módulos y la documentación", () => {
@@ -68,13 +68,39 @@ test("API: con ADA_HOST abierto a la red se acepta el nombre de la máquina, per
   assert.equal(estado(peticionPermitida(pedido("POST", { ...lan, ...json, origin: "https://sitio-cualquiera.example" }))), 403);
 }));
 
+/** Forma completa de parseArgs, para no repetir los campos vacíos. */
+function args(/** @type {Partial<ReturnType<typeof parseArgs>>} */ parcial) {
+  return {
+    command: "run", provider: undefined, model: undefined, message: "",
+    capas: false, help: false, version: false, port: undefined, host: undefined, error: undefined,
+    ...parcial,
+  };
+}
+
 test("terminal: proveedor, modelo y mensaje", () => {
-  assert.deepEqual(parseArgs(["--ollama", "--model=qwen3:8b", "lee", "AGENTS.md"]), { provider: "ollama", model: "qwen3:8b", message: "lee AGENTS.md", capas: false });
-  assert.deepEqual(parseArgs(["hola"]), { provider: undefined, model: undefined, message: "hola", capas: false });
+  assert.deepEqual(parseArgs(["--ollama", "--model=qwen3:8b", "lee", "AGENTS.md"]), args({ provider: "ollama", model: "qwen3:8b", message: "lee AGENTS.md" }));
+  assert.deepEqual(parseArgs(["hola"]), args({ message: "hola" }));
   assert.match(parseArgs([]).message, /Lista los archivos/);
+  assert.equal(parseArgs([]).command, "run");
 });
 
 test("terminal: --capas pide el peso de las capas, no un turno", () => {
   assert.equal(parseArgs(["--capas"]).capas, true);
+  assert.equal(parseArgs(["--capas"]).command, "capas");
+  assert.equal(parseArgs(["capas"]).command, "capas");
   assert.equal(parseArgs(["--capas"]).provider, undefined, "--capas no es un proveedor");
+});
+
+test("ADR 0010: el chat y el turno salen del mismo comando", () => {
+  assert.equal(parseArgs([], { defaultCommand: "serve" }).command, "serve");
+  assert.deepEqual(parseArgs(["serve", "--port", "4000", "--host", "127.0.0.1"]), args({ command: "serve", port: "4000", host: "127.0.0.1" }));
+  assert.deepEqual(parseArgs(["run", "--gemini", "hola"]), args({ provider: "gemini", message: "hola" }));
+  assert.equal(parseArgs(["-h"]).help, true);
+  assert.equal(parseArgs(["-v"]).version, true);
+  assert.match(parseArgs(["--no-existe"]).error || "", /desconocida/);
+  assert.match(parseArgs(["--ollama", "--gemini", "hola"]).error || "", /un solo proveedor/);
+  assert.match(parseArgs(["serve", "--port", "no"]).error || "", /puerto/);
+  assert.match(ayuda(), /ada serve/);
+  assert.match(ayuda(), /ada run/);
+  assert.match(ayuda(), /ada capas/);
 });

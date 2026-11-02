@@ -31,6 +31,14 @@ test("ADR 0001: el harness no declara dependencias para correr", () => {
   assert.deepEqual(Object.keys(pkg.dependencies || {}), [], "solo devDependencies: ver docs/decisiones/0001");
 });
 
+test("ADR 0010: ada es el bin, y los scripts de chat y terminal lo llaman", () => {
+  const pkg = JSON.parse(readFileSync(path.join(paths.root, "package.json"), "utf8"));
+  assert.equal(pkg.bin?.ada, "bin/ada.js");
+  for (const script of ["start", "cli", "capas"]) assert.match(pkg.scripts[script], /bin\/ada\.js/);
+  const bin = readFileSync(path.join(paths.root, "bin", "ada.js"), "utf8");
+  assert.match(bin, /^#!\/usr\/bin\/env node/);
+});
+
 test("ADR 0003: cada módulo con lógica del chat tiene su archivo de pruebas", () => {
   for (const f of modulos.filter((m) => !SIN_LOGICA.includes(m))) {
     const prueba = path.join(paths.root, "tests", "unit", "app", f.replace(/\.js$/, ".test.js"));

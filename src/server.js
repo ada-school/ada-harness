@@ -4,7 +4,7 @@
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadEnvFile, port, listenHost, abiertoALaRed } from "./config.js";
+import { port, listenHost, abiertoALaRed } from "./config.js";
 import { createApi, createSessionStore } from "./http/api.js";
 import { serveStatic } from "./http/static.js";
 import { listProviders } from "./providers/index.js";
@@ -33,11 +33,22 @@ async function informar(puerto) {
   console.log(`Explicador en http://localhost:${puerto}/docs/Anatom%C3%ADa%20de%20un%20Agente.html`);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
-  loadEnvFile();
+/** Empieza a escuchar. El comando ya cargó .env y, si venían, --port y --host. @returns {import("node:http").Server} */
+export function listen() {
   const puerto = port();
-  createServer().listen(puerto, listenHost(), async () => {
+  const server = createServer();
+  server.listen(puerto, listenHost(), async () => {
     await informar(puerto);
     if (abiertoALaRed()) console.log(`Atención: ADA_HOST=${listenHost()} abre el chat a otras máquinas. Cualquiera en tu red puede correr herramientas en este equipo.`);
   });
+  return server;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+  const { main } = await import("./cli.js");
+  const { turn, fixedLayers } = await import("./harness.js");
+  const { loadRouting } = await import("./context.js");
+  const argv = process.argv.slice(2);
+  const conComando = ["serve", "run", "capas"].includes(argv[0]) ? argv : ["serve", ...argv];
+  await main(conComando, { turn, fixedLayers, loadRouting, listen, defaultCommand: "serve" });
 }

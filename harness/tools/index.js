@@ -50,6 +50,59 @@ export function resolveWritable(p) {
 }
 
 /**
+ * Rechaza enlaces simbólicos en cada tramo existente, además de validar la ruta léxica.
+ * No sustituye un sandbox del sistema operativo ni protege frente a cambios concurrentes.
+ * @param {string} base
+ * @param {string} abs
+ * @param {{ createBase?: boolean }} [opts]
+ * @returns {Promise<string>}
+ */
+async function rejectSymlinkTraversal(base, abs, { createBase = false } = {}) {
+  if (createBase) await fs.mkdir(base, { recursive: true });
+  const root = await fs.realpath(base);
+  const relative = path.relative(path.resolve(base), abs);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("Ruta fuera de la carpeta permitida");
+  let current = path.resolve(base);
+  for (const part of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    try {
+      const stat = await fs.lstat(current);
+      if (stat.isSymbolicLink()) throw new Error(`Ruta atraviesa un enlace simbólico: ${current}`);
+      const real = await fs.realpath(current);
+      const rel = path.relative(root, real);
+      if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error("Ruta fuera de la carpeta permitida");
+    } catch (error) {
+      if (/** @type {NodeJS.ErrnoException} */ (error).code === "ENOENT") break;
+      throw error;
+    }
+  }
+  return abs;
+}
+
+/**
+ * @param {string} base
+ * @param {string} p
+ * @param {{ createBase?: boolean }} [opts]
+ * @returns {Promise<string>}
+ */
+async function confined(base, p, opts) {
+  const abs = inside(base, p);
+  if (isProtected(path.relative(base, abs))) throw new Error(`Archivo protegido: ${p}`);
+  return rejectSymlinkTraversal(base, abs, opts);
+}
+
+/** @param {string} p */
+async function readablePath(p) {
+  const base = p.startsWith("/") ? paths.root : paths.workspace;
+  return rejectSymlinkTraversal(base, resolveReadable(p));
+}
+
+/** @param {string} p */
+async function writablePath(p) {
+  return rejectSymlinkTraversal(paths.workspace, resolveWritable(p), { createBase: true });
+}
+
+/**
  * ¿Es una dirección de esta máquina o de una red privada? (loopback, 10/8, 172.16/12, 192.168/16,
  * 169.254/16 de metadatos de nube, 100.64/10, y sus equivalentes en IPv6)
  * @param {string} ip
@@ -88,10 +141,10 @@ export const tools = {
     definition: {
       name: "list_dir",
       description: "Lista archivos y carpetas dentro de workspace/ (o del repo si path empieza con '/'). Úsala antes de leer para no adivinar nombres.",
-      input_schema: { type: "object", properties: { path: { type: "string", description: "Ruta relativa a workspace/. '.' para la raíz." } }, required: ["path"] },
+      input_schema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 512, description: "Ruta relativa a workspace/. '.' para la raíz." } }, required: ["path"], additionalProperties: false },
     },
     async run({ path: p }) {
-      const entries = await fs.readdir(resolveReadable(p), { withFileTypes: true });
+      const entries = await fs.readdir(await readablePath(p), { withFileTypes: true });
       return entries.map((e) => (e.isDirectory() ? e.name + "/" : e.name)).join("\n") || "(vacío)";
     },
   },
@@ -100,10 +153,10 @@ export const tools = {
     definition: {
       name: "read_file",
       description: "Lee un archivo de texto de workspace/ (o del repo si path empieza con '/'). Devuelve el contenido con números de línea.",
-      input_schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+      input_schema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 512 } }, required: ["path"], additionalProperties: false },
     },
     async run({ path: p }) {
-      const txt = await fs.readFile(resolveReadable(p), "utf8");
+      const txt = await fs.readFile(await readablePath(p), "utf8");
       return txt.split("\n").map((l, i) => `${String(i + 1).padStart(4)}  ${l}`).join("\n");
     },
   },
@@ -112,12 +165,12 @@ export const tools = {
     definition: {
       name: "write_file",
       description: "Crea o sobreescribe un archivo dentro de workspace/. Crea las carpetas que falten.",
-      input_schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] },
+      input_schema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 512 }, content: { type: "string", maxLength: 1000000 } }, required: ["path", "content"], additionalProperties: false },
     },
     async run({ path: p, content }) {
-      const abs = resolveWritable(p);
+      const abs = await writablePath(p);
       await fs.mkdir(path.dirname(abs), { recursive: true });
-      await fs.writeFile(abs, content, "utf8");
+      await fs.writeFile(await writablePath(p), content, "utf8");
       return `ok, ${Buffer.byteLength(content)} bytes en workspace/${p}`;
     },
   },
@@ -128,8 +181,9 @@ export const tools = {
       description: "Ejecuta un comando dentro de workspace/ con un tiempo límite de 60s. Devuelve stdout y stderr. Sin shell: pasa el programa y sus argumentos por separado.",
       input_schema: {
         type: "object",
-        properties: { program: { type: "string", description: "ej. node, npm, python3, ls" }, args: { type: "array", items: { type: "string" } } },
+        properties: { program: { type: "string", minLength: 1, maxLength: 256, description: "ej. node, npm, python3, ls" }, args: { type: "array", items: { type: "string", maxLength: 4096 }, maxItems: 32 } },
         required: ["program"],
+        additionalProperties: false,
       },
     },
     async run({ program, args = [] }) {
@@ -146,7 +200,7 @@ export const tools = {
     definition: {
       name: "web_fetch",
       description: "Descarga una URL pública y devuelve su texto (HTML sin etiquetas, recortado a 20.000 caracteres).",
-      input_schema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+      input_schema: { type: "object", properties: { url: { type: "string", minLength: 8, maxLength: 2048 } }, required: ["url"], additionalProperties: false },
     },
     async run({ url }) {
       // las redirecciones se siguen a mano para revisar cada destino
@@ -168,11 +222,10 @@ export const tools = {
     definition: {
       name: "load_skill",
       description: "Carga el contenido completo de un skill del índice. Úsalo cuando la tarea coincide con la descripción del skill.",
-      input_schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+      input_schema: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 64 } }, required: ["name"], additionalProperties: false },
     },
     async run({ name }) {
-      const abs = inside(paths.skills, path.join(name, "SKILL.md"));
-      return await fs.readFile(abs, "utf8");
+      return await fs.readFile(await confined(paths.skills, path.join(name, "SKILL.md")), "utf8");
     },
   },
 
@@ -180,10 +233,10 @@ export const tools = {
     definition: {
       name: "read_memory",
       description: "Lee un archivo de memoria del índice (ej. areas/mi-proyecto.md).",
-      input_schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+      input_schema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 512 } }, required: ["path"], additionalProperties: false },
     },
     async run({ path: p }) {
-      return await fs.readFile(inside(paths.memory, p), "utf8");
+      return await fs.readFile(await confined(paths.memory, p), "utf8");
     },
   },
 
@@ -191,15 +244,15 @@ export const tools = {
     definition: {
       name: "write_memory",
       description: "Crea o reemplaza un archivo de memoria en areas/. Solo hechos que el usuario dijo o decisiones tomadas, una línea por hecho con el prefijo '- [stated]'. Incluye frontmatter con name y description.",
-      input_schema: { type: "object", properties: { path: { type: "string", description: "ej. areas/mi-proyecto.md" }, content: { type: "string" } }, required: ["path", "content"] },
+      input_schema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 512, description: "ej. areas/mi-proyecto.md" }, content: { type: "string", maxLength: 100000 } }, required: ["path", "content"], additionalProperties: false },
     },
     async run({ path: p, content }) {
       if (!p.startsWith("areas/")) return "error: solo se escribe dentro de areas/. profile.md y preferences.md se editan a mano.";
       const base = path.join(paths.memory, "areas");
-      const abs = inside(base, p.slice("areas/".length));
-      if (isProtected(path.relative(base, abs))) throw new Error(`Archivo protegido: ${p}`);
+      const rel = p.slice("areas/".length);
+      const abs = await confined(base, rel, { createBase: true });
       await fs.mkdir(path.dirname(abs), { recursive: true });
-      await fs.writeFile(abs, content, "utf8");
+      await fs.writeFile(await confined(base, rel), content, "utf8");
       return `ok, memoria guardada en ${p}`;
     },
   },

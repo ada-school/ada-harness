@@ -9,6 +9,7 @@ El modelo propone rutas y el harness las ejecuta. Una revisión encontró tres f
 ## Decisión
 
 - `inside(base, ruta)` compara carpetas con `path.relative`, no prefijos de texto. Rechaza `..`, rutas absolutas y carpetas vecinas.
+- Después de la ruta léxica, cada tramo existente se revisa con `lstat`: un enlace simbólico se rechaza, aunque apunte otra vez adentro. No cubre un cambio concurrente entre la revisión y la escritura.
 - Rutas que empiezan con `/` se leen desde la raíz del repo; el resto, desde el workspace.
 - Ningún tramo de una ruta puede llamarse `.env`, `.env.*` ni `.git`, ni para leer ni para escribir, en el repo ni en el workspace (`isProtected()` en `src/config.js`). Esto importa cuando `ADA_WORKSPACE` apunta a un proyecto real.
 - `write_memory` escribe solo dentro de la carpeta de memoria (`areas/`), y tampoco ahí acepta nombres protegidos.
