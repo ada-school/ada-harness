@@ -38,6 +38,7 @@ test("spawn_agent se arma desde el índice: cada agente con su descripción", ()
   assert.deepEqual(def.input_schema.properties.agent.enum, ["researcher", "reviewer", "frontend", "qa"]);
   for (const a of indice) assert.ok(def.description.includes(`${a.name} (${a.description})`), a.name);
   assert.deepEqual(def.input_schema.required, ["agent", "task"]);
+  assert.equal(def.input_schema.additionalProperties, false);
 });
 
 test("un subagente recibe el cuerpo de su archivo, sin el frontmatter", async () => {

@@ -6,7 +6,7 @@ Un modelo de lenguaje recibe tokens y devuelve tokens. Eso es todo lo que hace. 
 
 Funciona con **Claude** (Anthropic), **Gemini** (Google) y **modelos locales con Ollama**, sin clave y sin costo por token: si tienes Ollama corriendo, el harness lo detecta solo. Eliges el modelo en el chat o con una variable, y el loop es el mismo.
 
-Cero dependencias para correrlo: `node src/server.js` y listo. Node 18 o superior. Pruebas que no necesitan claves ni red, decisiones de arquitectura escritas y un proceso de casos de uso con pruebas primero para el front end. Licencia MIT.
+Cero dependencias para correrlo: `npm start` y listo. Node 18 o superior. Pruebas que no necesitan claves ni red, decisiones de arquitectura escritas y un proceso de casos de uso con pruebas primero para el front end. Licencia MIT.
 
 ---
 
@@ -159,12 +159,16 @@ ada-harness/
 │   │   └── qa.md                  Revisa el proyecto entero contra decisiones, casos de uso y pruebas.
 │   └── tools/
 │       └── index.js               Cada herramienta: definición JSON + función que la ejecuta.
+├── bin/
+│   └── ada.js                     Comando único: chat, un turno o el peso de las capas.
 ├── src/                           El motor. Cada archivo tiene un solo trabajo.
 │   ├── harness.js                 El loop: llamar, ejecutar herramientas, subagentes, turn().
 │   ├── context.js                 Ensambla la ventana por capas y estima tokens.
 │   ├── window.js                  La ventana llena: presupuesto, compact(), maybeOffload().
 │   ├── config.js                  Rutas del repo, archivos protegidos, carga de .env.
 │   ├── types.js                   Tipos en JSDoc: mensajes, bloques, proveedor, trace.
+│   ├── validation.js              Subconjunto de JSON Schema: el servidor valida lo que el modelo pide.
+│   ├── cli.js                     Lee los argumentos de `ada` y despacha.
 │   ├── providers/
 │   │   ├── index.js               Registro y elección del proveedor.
 │   │   ├── anthropic.js           Claude: el formato interno ya es el suyo.
@@ -173,8 +177,7 @@ ada-harness/
 │   ├── http/
 │   │   ├── static.js              Qué archivos sirve: app/ y docs/, nada más.
 │   │   └── api.js                 /api/providers, /api/chat, /api/reset y las sesiones.
-│   ├── server.js                  Junta static.js y api.js en un servidor HTTP.
-│   └── cli.js                     El mismo turno desde la terminal, o el peso de las capas.
+│   └── server.js                  Junta static.js y api.js en un servidor HTTP. `listen()` lo usa el comando.
 ├── app/                           El chat. HTML, CSS y módulos ES nativos: sin compilar.
 │   ├── index.html                 Solo estructura.
 │   ├── styles.css                 Colores por capa, iguales a los del explicador.
@@ -555,18 +558,19 @@ Los cuatro casos de uso del chat (conversar, elegir modelo, inspeccionar el cont
 git clone https://github.com/ada-school/ada-harness.git
 cd ada-harness
 cp .env.example .env          # pon tu clave de Claude o de Gemini, o ninguna si usas Ollama
-node src/server.js            # http://localhost:3000
+npm start                     # http://localhost:3000  (no hace falta npm install)
 ```
 
-Desde la terminal, un turno sin interfaz:
+El mismo comando abre el chat, corre un turno o mide las capas. `npm start` es `ada serve`.
 
 ```bash
-node src/harness.js "Lista los archivos del workspace y dime qué hay"
-node src/harness.js --gemini "Lo mismo, pero con Gemini"
-node src/harness.js --ollama --model=qwen3:8b "Lo mismo, local y gratis"
+npm run cli -- "Lista los archivos del workspace y dime qué hay"
+npm run cli -- --gemini "Lo mismo, pero con Gemini"
+npm run cli -- --ollama --model=qwen3:8b "Lo mismo, local y gratis"
+node bin/ada.js --help
 ```
 
-También funcionan `npm start` y `npm run cli -- "mensaje"`.
+`node src/server.js` y `node src/harness.js "mensaje"` siguen funcionando: los dos leen los argumentos en `src/cli.js`. Después de `npm install` (solo hace falta para los tipos), `npx ada` abre el chat en este repo. No uses `npx ada-harness` contra el registro: el paquete no está publicado.
 
 ¿Cuánto pesa el contexto antes de escribir nada? `npm run capas` lo mide sin llamar a ningún modelo:
 
@@ -619,7 +623,7 @@ La API solo atiende al propio chat: el servidor escucha en `127.0.0.1`, y un POS
 Correr el harness no necesita instalar nada. Para revisar tipos sí: `npm install` trae TypeScript, solo como herramienta de desarrollo. El código sigue siendo JavaScript; los tipos viven en comentarios JSDoc (`src/types.js`).
 
 ```bash
-npm test                      # las 103 pruebas: unit, providers e integration
+npm test                      # las 114 pruebas: unit, providers e integration
 npm run test:unit             # una capa
 npm run trazabilidad          # cada criterio de los casos de uso contra sus pruebas
 npm run typecheck             # tipos con TypeScript, sin compilar
@@ -628,7 +632,7 @@ npm run check                 # tipos + pruebas: córrelo antes de un commit
 
 ```mermaid
 flowchart LR
-    U["unit · 76<br/>lógica pura, arquitectura,<br/>trazabilidad, milisegundos"] --> P["providers · 18<br/>APIs simuladas, Ollama falso"] --> I["integration · 9<br/>servidor real de punta a punta"]
+    U["unit · 87<br/>lógica pura, arquitectura,<br/>trazabilidad, milisegundos"] --> P["providers · 18<br/>APIs simuladas, Ollama falso"] --> I["integration · 9<br/>servidor real de punta a punta"]
 ```
 
 Ninguna prueba usa claves ni sale a internet: Claude y Gemini se simulan con `fakeFetch`, Ollama con un servidor que imita `/api/tags`, `/api/show` y `/api/chat`, y cada prueba trabaja en un workspace y una memoria temporales (`ADA_WORKSPACE`, `ADA_MEMORY`): correrlas no deja rastro en el repo. GitHub Actions corre tipos y pruebas en Node 18, 20 y 22 en cada push (`.github/workflows/ci.yml`).
@@ -646,7 +650,7 @@ En orden de impacto por minuto invertido:
 1. **`AGENTS.md`.** Stack, comandos, convenciones, qué no tocar. Es la capa más barata y la más efectiva. Una regla aquí vale más que repetirla en cada mensaje.
 2. **`harness/memory/profile.md` y `preferences.md`.** Escríbelos a mano la primera vez. El agente solo escribe en `areas/`.
 3. **Skills.** Un skill es un procedimiento, no una enciclopedia. La `description` del frontmatter es la condición de disparo: escríbela como "cárgalo cuando…". Si pasa de 200 líneas, divídelo.
-4. **Herramientas.** Registra una nueva en `harness/tools/index.js`: un objeto con `definition` (JSON que el modelo ve) y `run` (función). Mantén las rutas dentro de `workspace/` con `inside()` y agrega su prueba en `tests/unit/tools.test.js`.
+4. **Herramientas.** Registra una nueva en `harness/tools/index.js`: un objeto con `definition` (JSON que el modelo ve) y `run` (función). El esquema tiene que caber en `src/validation.js` (`additionalProperties: false`). Mantén las rutas dentro de `workspace/` con `inside()` y agrega su prueba en `tests/unit/tools.test.js`.
 5. **Subagentes.** Agrega `harness/agents/<nombre>.md` con frontmatter (`name` y una `description` de una línea) y su entrada en `routing.json`: herramientas, tope de iteraciones y modelo. `spawn_agent` lo ofrece solo.
 6. **`routing.json`.** Ajusta presupuesto y umbrales según el modelo y el tipo de trabajo. Trabajo largo con muchos archivos: baja `offloadAbove`; conversación corta: sube `compactAt`.
 7. **Decisiones y casos de uso.** Cuando tomes una decisión que alguien podría cuestionar, escríbela en `docs/decisiones/` con la prueba que la verifica. Cuando tu proyecto tenga pantallas, escribe sus casos de uso y deja que el agente `frontend` siga el ciclo de pruebas primero.
@@ -669,7 +673,7 @@ flowchart LR
 | **Degradación antes del límite.** Compactar al 80%, no al 100%. | `routing.json` → `compactAt`, `window.js` → `compact()` |
 | **Aislar lo ruidoso.** Investigación, revisión, implementación de pantallas y QA en subagentes, cada uno con su contexto. | `spawnAgent()`, `agents/`, `routing.json` → `agents` |
 | **Todo es texto.** Cada capa es un archivo. Si no puedes leerlo, no está en el harness. | `harness/` entero |
-| **El modelo propone, el harness ejecuta.** Nada corre sin pasar por una función registrada y una carpeta permitida. | `runAgent()`, `inside()` |
+| **El modelo propone, el harness ejecuta.** Nada corre sin pasar por una función registrada, un esquema válido y una carpeta permitida. | `runAgent()`, `validateInput()`, `inside()` |
 | **Los secretos no son contexto.** El agente no puede leer `.env` ni `.git`, ni siquiera desde la raíz del repo. | `config.js` → `isProtected()`, `resolveReadable()` |
 | **Lo que decide es puro; lo que toca el mundo, delgado.** Las reglas se prueban sin red, sin modelo y sin navegador. | `window.js`, `app/js/*`, `tests/` |
 | **El modelo es intercambiable.** El loop habla un formato interno; cada proveedor traduce de ida y de vuelta. | `src/providers/` |
@@ -690,6 +694,8 @@ El porqué de cada pieza está en [`docs/decisiones/`](docs/decisiones/README.md
 | [0006](docs/decisiones/0006-sandbox-y-archivos-protegidos.md) | Las herramientas no salen del workspace ni tocan secretos | `tools.test.js` |
 | [0007](docs/decisiones/0007-casos-de-uso-y-tdd.md) | El front end se construye con casos de uso y pruebas primero | `casos-de-uso.test.js` |
 | [0008](docs/decisiones/0008-agentes-por-archivo.md) | Un agente es un archivo y una entrada en routing.json | `agentes.test.js` |
+| [0009](docs/decisiones/0009-validacion-de-herramientas.md) | El servidor valida los argumentos de cada herramienta | `validation.test.js`, `harness.test.js` |
+| [0010](docs/decisiones/0010-comando-unico.md) | Un comando para el chat y para la terminal | `http-cli.test.js`, `arquitectura.test.js` |
 
 ---
 
@@ -699,7 +705,7 @@ El porqué de cada pieza está en [`docs/decisiones/`](docs/decisiones/README.md
 - **Sin sandbox real.** `run_command` corre dentro de `workspace/` con timeout y sin shell, pero no es un contenedor: un programa que el agente ejecute puede leer lo que tu usuario lee, `.env` incluido. La protección de secretos cubre `read_file`, `list_dir` y `write_file`. Bien para uso local, no para multiusuario.
 - **Sin streaming.** Cada turno devuelve la respuesta completa. Agregar SSE es el siguiente paso natural.
 - **Historial en memoria.** Se pierde al reiniciar el servidor.
-- **Interfaz sin framework.** El chat son siete módulos chicos y alcanza. Si crece a muchas pantallas, ver cuándo conviene agregar uno en [`docs/decisiones/0001-interfaz-sin-compilacion.md`](docs/decisiones/0001-interfaz-sin-compilacion.md).
+- **Interfaz sin framework.** El chat son siete módulos chicos y alcanza. Si crece a muchas pantallas, ver cuándo conviene agregar uno en [`docs/decisiones/0001-interfaz-sin-compilacion.md`](docs/decisiones/0001-interfaz-sin-compilacion.md). Lo que sí quedó unificado es el arranque: chat y terminal salen de `bin/ada.js` ([decisión 0010](docs/decisiones/0010-comando-unico.md)). Qué sigue, y qué librerías no entran, está en [`docs/BACKLOG.md`](docs/BACKLOG.md).
 - **Los agentes frontend y qa piden un modelo capaz.** Por eso usan el modelo principal. Con un modelo local de 8B, el ciclo de pruebas primero suele perderse a mitad de camino: para ese trabajo, usa Claude o Gemini.
 - **Un modelo por conversación.** Cambiar de modelo o de proveedor empieza una conversación nueva, porque las firmas y los ids de una API no sirven en otra, y un historial escrito por un modelo confunde al siguiente.
 - **Modelos locales más limitados.** Un modelo de 8B en Ollama elige peor las herramientas y se pierde antes en tareas largas. Y su ventana real (16k por defecto) se llena mucho más rápido: la compactación aparece en conversaciones cortas.
