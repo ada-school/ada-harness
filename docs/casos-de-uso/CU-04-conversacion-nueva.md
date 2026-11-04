@@ -1,21 +1,21 @@
-# CU-04 Empezar una conversación nueva
+# CU-04 Start a new conversation
 
-**Actor:** quien usa el chat.
-**Objetivo:** volver a empezar con el contexto vacío, por ejemplo entre dos ejercicios de un taller.
-**Precondiciones:** el servidor corre.
-**Disparador:** la persona pulsa "Nueva conversación".
+**Actor:** the person using the chat.
+**Goal:** start over with an empty context, for example between two exercises in a workshop.
+**Preconditions:** the server is running.
+**Trigger:** the person presses "New conversation".
 
-## Flujo principal
+## Main flow
 
-1. El chat le pide al servidor que olvide las conversaciones.
-2. La página se recarga: conversación vacía e inspector en cero.
-3. El siguiente mensaje llega al modelo sin turnos anteriores.
+1. The chat asks the server to forget the conversations.
+2. The page reloads: an empty conversation and the inspector at zero.
+3. The next message reaches the model with no earlier turns.
 
-## Criterios de aceptación
+## Acceptance criteria
 
-- **CU-04.1** Dada una conversación con historial, cuando la persona pulsa "Nueva conversación", entonces el servidor la olvida y el siguiente mensaje llega al modelo sin turnos anteriores.
-- **CU-04.2** (manual) Dada una conversación con historial, cuando la persona pulsa "Nueva conversación", entonces la pantalla vuelve al estado inicial: conversación vacía e inspector en cero. Verificación: hacer un turno, pulsar el botón y mirar los dos paneles.
+- **CU-04.1** Given a conversation with history, when the person presses "New conversation", then the server forgets it and the next message reaches the model with no earlier turns.
+- **CU-04.2** (manual) Given a conversation with history, when the person presses "New conversation", then the screen returns to the initial state: an empty conversation and the inspector at zero. Verification: run a turn, press the button, and look at both panels.
 
-## Fuera de alcance
+## Out of scope
 
-- Borrar solo una conversación cuando hay varias pestañas abiertas: el servidor olvida todas.
+- Deleting only one conversation when several tabs are open: the server forgets all of them.

@@ -13,11 +13,15 @@ export function inspectorView(trace, presupuestoPrevio = 120000) {
   const budget = trace.budget || presupuestoPrevio;
   const capas = trace.lastContext?.layers || [];
   const total = capas.reduce((a, l) => a + l.tokens, 0);
+  const uso = trace.lastContext?.usage;
+  const reales = typeof uso?.input_tokens === "number"
+    ? ` · ${num(uso.input_tokens)} in${typeof uso.output_tokens === "number" ? `, ${num(uso.output_tokens)} out` : ""}`
+    : "";
   return {
     budget,
-    modelo: trace.provider ? `proveedor: ${trace.provider} · ${trace.model}${trace.budget ? ` · ventana ${num(trace.budget)}` : ""}` : null,
+    modelo: trace.provider ? `provider: ${trace.provider} · ${trace.model}${trace.budget ? ` · window ${num(trace.budget)}` : ""}` : null,
     segmentos: capas.map((l) => ({ name: l.name, color: colorDeCapa(l.name), width: `${(l.tokens / budget * 100).toFixed(2)}%` })),
-    usado: `~${num(total)} / ${num(budget)} tokens estimados (${(total / budget * 100).toFixed(1)}%)`,
+    usado: `~${num(total)} / ${num(budget)} estimated tokens (${(total / budget * 100).toFixed(1)}%)${reales}`,
     capas: capas.map((l) => ({ name: l.name, color: colorDeCapa(l.name), tokens: `~${num(l.tokens)}` })),
     contadores: { calls: String(trace.calls ?? 0), tools: String(trace.tools?.length ?? 0), intok: num(trace.lastContext?.usage?.input_tokens ?? 0) },
     eventos: eventos(trace),
@@ -36,11 +40,11 @@ function eventos(trace) {
       text: `${x.agent ? `[${x.agent}] ` : ""}${x.name}(${JSON.stringify(x.input).slice(0, 60)}) → ~${x.tokens} tok`,
     })),
     ...(trace.events || []).map((e) =>
-      e.type === "compact" ? { cls: "cmp", text: `compactación: ${e.droppedMessages} mensajes → resumen de ~${e.summaryTokens} tok` }
-      : e.type === "warning" ? { cls: "cmp", text: `aviso: ${e.text}` }
-      : { cls: "sub", text: `subagente ${e.agent}: ${e.calls} llamadas, ${e.tools} herramientas` }),
+      e.type === "compact" ? { cls: "cmp", text: `compaction: ${e.droppedMessages} messages → summary of ~${e.summaryTokens} tok` }
+      : e.type === "warning" ? { cls: "cmp", text: `warning: ${e.text}` }
+      : { cls: "sub", text: `subagent ${e.agent}: ${e.calls} calls, ${e.tools} tools` }),
   ];
-  return lista.length ? lista : [{ cls: "empty", text: "Sin herramientas en este turno." }];
+  return lista.length ? lista : [{ cls: "empty", text: "No tools in this turn." }];
 }
 
 /**

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,36 +9,36 @@
 </head>
 <body>
 <header>
-  <b>ADA Harness</b><span class="subtitulo">chat mínimo + inspector de contexto</span>
+  <b>ADA Harness</b><span class="subtitulo">minimal chat + context inspector</span>
   <span class="sp"></span>
-  <label for="prov">Modelo <select id="prov"><option>cargando…</option></select></label>
-  <a href="/docs/Anatom%C3%ADa%20de%20un%20Agente.html" target="_blank">Explicador</a>
-  <button id="reset" type="button">Nueva conversación</button>
+  <label for="prov">Model <select id="prov"><option>loading…</option></select></label>
+  <a href="/docs/Anatom%C3%ADa%20de%20un%20Agente.html" target="_blank">Explainer</a>
+  <button id="reset" type="button">New conversation</button>
 </header>
 
 <main>
-  <div id="log"><div class="msg s">Cada mensaje es un turno. Un turno puede ser varias llamadas al modelo. Mira el panel de la derecha.</div></div>
+  <div id="log"><div class="msg s">Each message is a turn. A turn can be several calls to the model. Look at the panel on the right.</div></div>
   <form id="f">
-    <textarea id="t" placeholder="Escribe. Shift+Enter para salto de línea." rows="1"></textarea>
-    <button class="send" id="send" type="submit">Enviar</button>
+    <textarea id="t" placeholder="Write. Shift+Enter for a new line." rows="1"></textarea>
+    <button class="send" id="send" type="submit">Send</button>
   </form>
 </main>
 
 <!-- El orden de estos cuatro bloques es el que numeran las slides del taller (1 ventana, 2 capas, 3 contadores, 4 eventos). -->
 <aside>
   <div>
-    <h2>Última llamada · ventana de contexto</h2>
-    <div id="modelo">proveedor: sin llamadas aún</div>
+    <h2>Last call · context window</h2>
+    <div id="modelo">provider: no calls yet</div>
     <div class="meter" id="meter"></div>
-    <div id="used" class="empty uso">sin llamadas aún</div>
+    <div id="used" class="empty uso">no calls yet</div>
   </div>
-  <div><h2>Capas</h2><div class="layers" id="layers"><div class="empty">Qué entró al contexto y cuánto pesó, por capa.</div></div></div>
+  <div><h2>Layers</h2><div class="layers" id="layers"><div class="empty">What entered the context, and how much each layer weighed.</div></div></div>
   <div class="stats">
-    <div class="stat"><b id="calls">0</b><span>llamadas (turno)</span></div>
-    <div class="stat"><b id="tools">0</b><span>herramientas</span></div>
-    <div class="stat"><b id="intok">0</b><span>tokens de entrada reales</span></div>
+    <div class="stat"><b id="calls">0</b><span>calls (turn)</span></div>
+    <div class="stat"><b id="tools">0</b><span>tools</span></div>
+    <div class="stat"><b id="intok">0</b><span>real input tokens</span></div>
   </div>
-  <div><h2>Eventos del loop</h2><div class="events" id="events"><div class="empty">Herramientas, compactaciones y subagentes aparecen aquí.</div></div></div>
+  <div><h2>Loop events</h2><div class="events" id="events"><div class="empty">Tools, compactions, and subagents show up here.</div></div></div>
 </aside>
 </body>
 </html>

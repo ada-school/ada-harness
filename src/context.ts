@@ -1,59 +1,61 @@
-// Ensambla la ventana de contexto a partir de las capas declaradas en harness/routing.json.
-// Devuelve el system prompt completo y un reporte por capa con el estimado de tokens,
-// que es lo que el inspector del chat muestra.
+// Edit src/context.ts. Node runs the compiled file under dist/. Rebuild with npm run build.
+// Assembles the context window from the layers declared in harness/routing.json.
+// Returns the full system prompt and a per-layer report with the token estimate,
+// which is what the chat inspector shows.
 
-import { promises as fs } from "node:fs";
+import { promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
 import { ROOT, paths } from "./config.js";
+import type { Layer, Message, Routing } from "./types.js";
 
 export { ROOT };
 
 /**
- * Estimación barata: ~4 caracteres por token en español e inglés mezclados.
- * Para cifras exactas, el inspector muestra al lado los tokens reales que devuelve la API.
+ * Cheap estimate: about 4 characters per token in mixed Spanish and English.
+ * For exact figures, the inspector shows the real tokens the API returns beside it.
  * @param {unknown} s
  */
-export const estimateTokens = (s) => Math.ceil((typeof s === "string" ? s : JSON.stringify(s)).length / 4);
+export const estimateTokens = (s: unknown): number => Math.ceil((typeof s === "string" ? s : JSON.stringify(s)).length / 4);
 
 /** @returns {Promise<import("./types.js").Routing>} */
-export async function loadRouting() {
+export async function loadRouting(): Promise<Routing> {
   return JSON.parse(await fs.readFile(paths.routing, "utf8"));
 }
 
-/** @param {string} p ruta relativa a la raíz del repo, o absoluta @returns {Promise<string>} */
-async function readIfExists(p) {
+/** @param {string} p path relative to the repo root, or absolute @returns {Promise<string>} */
+async function readIfExists(p: string): Promise<string> {
   try { return await fs.readFile(path.resolve(ROOT, p), "utf8"); } catch { return ""; }
 }
 
 /**
- * Lee el frontmatter YAML simple (una clave por línea). Acepta saltos de línea de Windows y BOM.
+ * Reads simple YAML frontmatter (one key per line). Accepts Windows line endings and a BOM.
  * @param {string} txt
  * @returns {Record<string, string>}
  */
-export function frontmatter(txt) {
+export function frontmatter(txt: string): Record<string, string> {
   const m = txt.replace(/^\uFEFF/, "").match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  /** @type {Record<string, string>} */
-  const out = {};
-  if (m) for (const line of m[1].split(/\r?\n/)) { const i = line.indexOf(":"); if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim(); }
+  const out: Record<string, string> = {};
+  const body = m?.[1];
+  if (body !== undefined) for (const line of body.split(/\r?\n/)) { const i = line.indexOf(":"); if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim(); }
   return out;
 }
 
 /**
- * El texto sin su frontmatter: lo que un agente recibe como prompt.
+ * The text without its frontmatter: what an agent receives as its prompt.
  * @param {string} txt
  */
-export function sinFrontmatter(txt) {
+export function sinFrontmatter(txt: string): string {
   return txt.replace(/^\uFEFF/, "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
 }
 
 /**
- * Índice de agentes (decisión 0008): nombre y descripción de cada agente que declara routing.json.
- * El cuerpo de su archivo entra solo cuando se lanza ese agente, como su system prompt.
+ * Agent index (decision 0008): name and description of each agent routing.json declares.
+ * The body of its file enters only when that agent is spawned, as its system prompt.
  * @param {import("./types.js").Routing} routing
  * @returns {Promise<{ name: string, description: string }[]>}
  */
-export async function agentsIndex(routing) {
-  const indice = [];
+export async function agentsIndex(routing: Routing): Promise<{ name: string; description: string }[]> {
+  const indice: { name: string; description: string }[] = [];
   for (const nombre of Object.keys(routing.agents || {})) {
     const fm = frontmatter(await readIfExists(`harness/agents/${nombre}.md`));
     indice.push({ name: fm.name || nombre, description: fm.description || "" });
@@ -62,14 +64,14 @@ export async function agentsIndex(routing) {
 }
 
 /**
- * Índice de skills: solo name + description. El cuerpo entra con load_skill.
- * @param {string} dir relativa a la raíz
+ * Skills index: name and description only. The body enters through load_skill.
+ * @param {string} dir relative to the root
  */
-export async function skillsIndex(dir) {
+export async function skillsIndex(dir: string): Promise<string> {
   const abs = path.join(ROOT, dir);
-  let entries = [];
+  let entries: Dirent[] = [];
   try { entries = await fs.readdir(abs, { withFileTypes: true }); } catch { return ""; }
-  const lines = [];
+  const lines: string[] = [];
   for (const e of entries) {
     if (!e.isDirectory()) continue;
     const txt = await readIfExists(path.join(dir, e.name, "SKILL.md"));
@@ -81,14 +83,14 @@ export async function skillsIndex(dir) {
 }
 
 /**
- * Índice de memoria: ruta + description de cada archivo en paths.memory/areas (ADA_MEMORY la mueve).
+ * Memory index: path and description of each file in paths.memory/areas (ADA_MEMORY moves it).
  * @returns {Promise<string>}
  */
-export async function memoryIndex() {
+export async function memoryIndex(): Promise<string> {
   const abs = path.join(paths.memory, "areas");
-  let files = [];
+  let files: string[] = [];
   try { files = (await fs.readdir(abs)).filter((f) => f.endsWith(".md")); } catch { return ""; }
-  const lines = [];
+  const lines: string[] = [];
   for (const f of files) {
     const fm = frontmatter(await readIfExists(path.join(abs, f)));
     lines.push(`- areas/${f}: ${fm.description || ""}`);
@@ -97,24 +99,23 @@ export async function memoryIndex() {
 }
 
 /**
- * Construye el system prompt. Cada bloque es una capa; el reporte dice cuánto pesa cada una.
+ * Builds the system prompt. Each block is a layer; the report says how much each one weighs.
  * @param {{ routing: import("./types.js").Routing, agentName?: string | null }} args
  * @returns {Promise<{ system: string, layers: import("./types.js").Layer[] }>}
  */
-export async function assembleSystem({ routing, agentName = null }) {
-  /** @type {{ name: string, tokens: number, text: string }[]} */
-  const layers = [];
-  const add = (name, text) => { if (text && text.trim()) layers.push({ name, tokens: estimateTokens(text), text }); };
+export async function assembleSystem({ routing, agentName = null }: { routing: Routing; agentName?: string | null }): Promise<{ system: string; layers: Layer[] }> {
+  const layers: { name: string; tokens: number; text: string }[] = [];
+  const add = (name: string, text: string) => { if (text && text.trim()) layers.push({ name, tokens: estimateTokens(text), text }); };
 
   if (agentName) {
-    // Un subagente arranca con su propio prompt y la guía del proyecto. Nada más.
+    // A subagent starts with its own prompt and the project guide. Nothing else.
     add("system (agente: " + agentName + ")", sinFrontmatter(await readIfExists(`harness/agents/${agentName}.md`)));
     add("projectGuide", await readIfExists(routing.layers.projectGuide.source));
   } else {
     add("system", await readIfExists(routing.layers.system.source));
     add("projectGuide", await readIfExists(routing.layers.projectGuide.source));
     add("skillsIndex", await skillsIndex(routing.layers.skillsIndex.source));
-    const core = [];
+    const core: string[] = [];
     for (const nombre of ["profile.md", "preferences.md"]) core.push(await readIfExists(path.join(paths.memory, nombre)));
     add("memoryCore", core.filter(Boolean).join("\n\n"));
     add("memoryIndex", await memoryIndex());
@@ -125,11 +126,11 @@ export async function assembleSystem({ routing, agentName = null }) {
 }
 
 /**
- * Reporte del historial: cuánto pesa cada tipo de bloque en messages.
+ * History report: how much each kind of block in messages weighs.
  * @param {import("./types.js").Message[]} messages
  * @returns {import("./types.js").Layer[]}
  */
-export function historyReport(messages) {
+export function historyReport(messages: Message[]): Layer[] {
   const acc = { user: 0, assistant: 0, toolResults: 0 };
   for (const m of messages) {
     if (typeof m.content === "string") { acc[m.role] += estimateTokens(m.content); continue; }

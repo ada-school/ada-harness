@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateInput } from "../../src/validation.js";
+import { validateInput } from "../../dist/src/validation.js";
 
 const schema = {
   type: "object",
@@ -27,7 +27,7 @@ test("validateInput limita longitud, tamaño de arreglos y valores enum", () => 
   assert.ok(errors.some((e) => e.includes("maxLength")));
   assert.ok(errors.some((e) => e.includes("maxItems")));
   assert.deepEqual(validateInput("no", { type: "string", enum: ["si", "no"] }), []);
-  assert.ok(validateInput("talvez", { type: "string", enum: ["si", "no"] }).some((e) => e.includes("permitidos")));
+  assert.ok(validateInput("talvez", { type: "string", enum: ["si", "no"] }).some((e) => e.includes("allowed")));
 });
 
 test("validateInput distingue integer de number y rechaza no finitos", () => {
@@ -38,7 +38,7 @@ test("validateInput distingue integer de number y rechaza no finitos", () => {
 });
 
 test("validateInput falla cerrado ante un esquema mal formado", () => {
-  assert.throws(() => validateInput({}, { type: "unknown" }), /tipo de esquema/);
-  assert.throws(() => validateInput({}, { type: "object", required: "path" }), /required inválido/);
-  assert.throws(() => validateInput("x", { type: "string", pattern: "(" }), /pattern inválido/);
+  assert.throws(() => validateInput({}, { type: "unknown" }), /unsupported schema type/);
+  assert.throws(() => validateInput({}, { type: "object", required: "path" }), /invalid required/);
+  assert.throws(() => validateInput("x", { type: "string", pattern: "(" }), /invalid pattern/);
 });

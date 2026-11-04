@@ -1,10 +1,10 @@
-// Servidor HTTP que imita la API de Ollama (/api/tags, /api/show, /api/chat).
-// Las pruebas cambian `state` para armar cada escenario.
+// HTTP server that imitates the Ollama API (/api/tags, /api/show, /api/chat).
+// Tests change `state` to set up each scenario.
 import http from "node:http";
 
 /**
- * Un servidor HTTP que imita la API de Ollama (/api/tags, /api/show, /api/chat). `state.tags` y
- * `state.chats` definen qué responde; `state.pedidos` acumula lo que recibió /api/chat.
+ * An HTTP server that imitates the Ollama API (/api/tags, /api/show, /api/chat). `state.tags` and
+ * `state.chats` define what it answers; `state.pedidos` collects what /api/chat received.
  * @returns {Promise<{ state: any, host: string, close: () => Promise<void> }>}
  */
 export async function startFakeOllama() {
@@ -15,9 +15,19 @@ export async function startFakeOllama() {
     if (req.url === "/api/tags") return json({ models: state.tags });
     if (req.url === "/api/show") return json(state.show[JSON.parse(body).model] || { capabilities: ["completion"] });
     if (req.url === "/api/chat") {
-      state.pedidos.push(JSON.parse(body));
+      const pedido = JSON.parse(body);
+      state.pedidos.push(pedido);
       const r = state.chats.shift();
-      return r ? json(r) : json({ error: "sin respuestas en la simulación" }, 500);
+      if (!r) return json({ error: "sin respuestas en la simulación" }, 500);
+      if (!pedido.stream) return json(r);
+      const msg = r.message || {};
+      const content = msg.content || "";
+      const cut = content.length > 1 ? Math.ceil(content.length / 2) : content.length;
+      res.writeHead(200, { "content-type": "application/x-ndjson" });
+      const head = content.slice(0, cut);
+      if (head) res.write(JSON.stringify({ model: r.model, message: { role: "assistant", content: head }, done: false }) + "\n");
+      res.end(JSON.stringify({ ...r, message: { ...msg, content: content.slice(cut) }, done: true }) + "\n");
+      return;
     }
     json({ error: "ruta" }, 404);
   });
@@ -26,8 +36,8 @@ export async function startFakeOllama() {
   return { state, host: `127.0.0.1:${port}`, close: () => new Promise((ok) => server.close(() => ok())) };
 }
 
-/** Un modelo como lo lista /api/tags. */
+/** A model as /api/tags lists it. */
 export const modelo = (name, caps, extra = {}) => ({ name, model: name, size: 1, details: { parameter_size: "8.2B" }, ...(caps ? { capabilities: caps } : {}), ...extra });
 
-/** Una respuesta de /api/chat. */
+/** A response from /api/chat. */
 export const respuestaChat = (message, extra = {}) => ({ model: "x", message: { role: "assistant", content: "", ...message }, done: true, done_reason: "stop", prompt_eval_count: 900, eval_count: 30, ...extra });

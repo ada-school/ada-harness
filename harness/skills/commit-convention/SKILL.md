@@ -1,22 +1,22 @@
 ---
 name: commit-convention
-description: Cómo escribir mensajes de commit y agrupar cambios en este repo. Cárgalo antes de proponer o hacer un commit.
+description: How to write commit messages and group changes in this repo. Load it before proposing or making a commit.
 ---
-# Convención de commits
+# Commit convention
 
-Formato: `tipo(alcance): resumen en imperativo, máximo 72 caracteres`
+Format: `type(scope): summary in the imperative, 72 characters at most`
 
-Tipos: feat, fix, docs, refactor, test, chore.
+Types: feat, fix, docs, refactor, test, chore.
 
-Reglas:
-1. Un commit, una intención. Si el diff mezcla dos cosas, sepáralo.
-2. El cuerpo explica el porqué, no el qué (el diff ya muestra el qué).
-3. Nunca commitees `.env`, credenciales ni archivos de `workspace/`.
+Rules:
+1. One commit, one intention. If the diff mixes two things, split it.
+2. The body explains why, not what (the diff already shows what).
+3. Never commit `.env`, credentials, or files from `workspace/`.
 
-Ejemplo:
+Example:
 ```
-feat(harness): compactar historial al 80% del presupuesto
+feat(harness): compact history at 80% of the budget
 
-Antes el loop esperaba a que la API rechazara la llamada. Ahora resume
-los mensajes viejos cuando el estimado supera el umbral de routing.json.
+The loop used to wait until the API rejected the call. It now summarizes
+old messages when the estimate passes the threshold in routing.json.
 ```

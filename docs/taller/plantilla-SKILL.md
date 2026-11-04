@@ -1,11 +1,11 @@
 ---
-name: tu-skill
-description: Qué hace. Cárgalo cuando pidan [tarea].
+name: your-skill
+description: What it does. Load it when they ask for [task].
 ---
-# Título del procedimiento
+# Title of the procedure
 
-1. Primer paso, con la herramienta que usa.
-2. Segundo paso.
-3. Cómo se ve terminado.
+1. First step, with the tool it uses.
+2. Second step.
+3. What done looks like.
 
-Nunca: [lo que no debe hacer].
+Never: [what it must not do].

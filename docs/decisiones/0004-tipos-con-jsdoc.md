@@ -1,29 +1,29 @@
-# 0004. Tipos en JSDoc revisados por TypeScript, sin compilar
+# 0004. Types in JSDoc, checked by TypeScript, with no compile step
 
-**Estado:** aceptada, octubre de 2026.
+**Status:** replaced for the engine by [0011](0011-ingles-typescript-y-librerias.md), November 2026. The chat still uses JSDoc. The architecture test still requires a JSDoc block on every export, and it reads the TypeScript sources.
 
-## Contexto
+## Context
 
-Queríamos que el editor autocomplete y que un error de nombre (`trace.call` en vez de `trace.calls`) se detecte antes de correr. Escribir el proyecto en TypeScript obliga a compilar, y eso rompe `node src/server.js` recién clonado (ver [0001](0001-interfaz-sin-compilacion.md)).
+We wanted the editor to autocomplete and a wrong name (`trace.call` instead of `trace.calls`) to be caught before a run. Writing the project in TypeScript forces a compile. At the time, that broke a freshly cloned `node src/server.js` (see [0001](0001-interfaz-sin-compilacion.md)). The engine now compiles to `dist/`.
 
-## Decisión
+## Decision
 
-- El código sigue siendo JavaScript. Los tipos van en comentarios JSDoc.
-- Los tipos compartidos viven en `src/types.js`: mensajes, bloques, `Provider`, `Trace`, `Routing`.
-- `npm run typecheck` corre TypeScript en modo estricto sobre `src/`, `harness/tools/`, `app/js/` y `tests/`, sin generar archivos (`jsconfig.json`).
-- Dos concesiones: parámetros sin anotar quedan como `any`, y en un `catch` se puede leer `e.message` sin chequeo previo.
-- Un proveedor nuevo se anota con `@satisfies {Provider}`: si le falta un método, el chequeo falla.
-- TypeScript es dependencia de desarrollo. Correr el harness no la necesita.
+- Shared types live in `src/types.ts` as exported types. `Provider` is an interface. The file exports no value, and nothing imports one from it. JSDoc still writes `import("./types.js")`. TypeScript resolves that to `types.ts`.
+- The engine sources are TypeScript. `npm run build` (`tsconfig.build.json`) writes `dist/`, and Node runs those files. `bin/ada.js` imports them. Exports stay the same, including `abiertoALaRed` and `sinFrontmatter`. Printed strings in the validator, the window, the context indexes, the provider adapters, the chat API, and the server startup stay Spanish until the error-message phase in the backlog. Tool descriptions stay Spanish too: they travel on every call. The spawn_agent description in the loop stays Spanish for the same reason.
+- `app/`, the tests, and `bin/ada.js` stay JavaScript. The main `tsconfig.json` does not emit, and `noImplicitAny` stays off there because `app/` and the tests are still JavaScript. The engine build turns `noImplicitAny` on. `npm run typecheck` runs both.
+- Two concessions remain for `app/` and the tests: unannotated parameters stay `any`, and inside a `catch` you may read `e.message` without a prior check.
+- A new provider is annotated with `@satisfies {Provider}`: if a method is missing, the check fails.
+- TypeScript is a development dependency. `npm install` is required to compile the engine. The only runtime dependency is `ajv`.
 
-## Consecuencias
+## Consequences
 
-- Mismo código en el navegador, en Node 18 y en el editor.
-- JSDoc es más verboso que TypeScript para tipos complejos.
+- The chat still loads without its own compile. The engine compiles to `dist/` on `npm start`.
+- JSDoc is more verbose than TypeScript for complex types.
 
-## Se verifica en
+## Checked by
 
-`npm run typecheck` y el flujo de CI (`.github/workflows/ci.yml`).
+`npm run typecheck` and the CI workflow (`.github/workflows/ci.yml`).
 
-## Cuándo revisarla
+## When to revisit
 
-Si Node puede ejecutar TypeScript sin banderas en todas las versiones que soportamos, o si la [0001](0001-interfaz-sin-compilacion.md) cambia y ya hay un paso de compilación.
+The engine compile has landed. The JSDoc rule remains for the chat, and for every export the architecture test still scans.

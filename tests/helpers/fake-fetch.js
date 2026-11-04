@@ -1,7 +1,7 @@
-// Reemplaza fetch por una lista de respuestas en orden y guarda cada pedido para revisarlo.
-// La detección de Ollama (/api/tags) falla, como en una máquina sin Ollama.
+// Replaces fetch with an ordered list of responses and stores each request so it can be checked.
+// Ollama detection (/api/tags) fails, as on a machine without Ollama.
 
-/** @param {any[]} respuestas cuerpos JSON que devolverá cada llamada, en orden */
+/** @param {any[]} respuestas JSON bodies each call will return, in order */
 export function fakeFetch(respuestas) {
   /** @type {{ url: string, headers: any, body: any }[]} */
   const pedidos = [];

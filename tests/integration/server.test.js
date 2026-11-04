@@ -1,21 +1,27 @@
-// Integración: el servidor real en un puerto libre, Ollama falso por HTTP y, para el cambio de
-// proveedor, Gemini simulado. Recorre lo mismo que hace el navegador.
+// Integration: the real server on a free port, fake Ollama over HTTP, and, for the provider
+// change, simulated Gemini. It walks the same path the browser does.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "../../src/server.js";
-import { detectar } from "../../src/providers/ollama.js";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { tomarEventos, aplicarEvento } from "../../app/js/conversacion.js";
+import { createServer } from "../../dist/src/server.js";
+import { detectar } from "../../dist/src/providers/ollama.js";
 import { startFakeOllama, modelo, respuestaChat } from "../helpers/fake-ollama.js";
 import { tempWorkspace, cleanEnv } from "../helpers/workspace.js";
 
 cleanEnv();
-let base, servidor, fake, ws;
+let base, servidor, fake, ws, sesionesDir;
 before(async () => {
   fake = await startFakeOllama();
   process.env.OLLAMA_HOST = fake.host;
   fake.state.tags = [modelo("qwen3:8b", ["completion", "tools"])];
   await detectar({ forzar: true });
   ws = await tempWorkspace();
+  sesionesDir = await mkdtemp(path.join(os.tmpdir(), "ada-sesiones-"));
+  process.env.ADA_SESSIONS = sesionesDir;
   servidor = createServer();
   await new Promise((ok) => servidor.listen(0, "127.0.0.1", () => ok(null)));
   const { port } = /** @type {import("node:net").AddressInfo} */ (servidor.address());
@@ -25,6 +31,8 @@ after(async () => {
   await new Promise((ok) => servidor.close(() => ok(null)));
   await fake.close();
   await ws.cleanup();
+  delete process.env.ADA_SESSIONS;
+  await rm(sesionesDir, { recursive: true, force: true });
 });
 
 const post = (ruta, body, crudo = false) =>
@@ -52,10 +60,12 @@ test("GET /api/providers: sin claves, Ollama queda por defecto con su modelo", a
 });
 
 test("POST /api/chat: errores de entrada con 400", async () => {
-  assert.equal((await post("/api/chat", "{no es json", true)).status, 400);
+  const malo = await post("/api/chat", "{no es json", true);
+  assert.equal(malo.status, 400);
+  assert.deepEqual(await malo.json(), { error: "Invalid JSON" });
   const r = await post("/api/chat", { session: "x" });
   assert.equal(r.status, 400);
-  assert.deepEqual(await r.json(), { error: "message requerido" });
+  assert.deepEqual(await r.json(), { error: "message is required" });
 });
 
 test("CU-01.5 POST /api/chat: un turno con herramienta, y el segundo turno lleva el primero completo", async () => {
@@ -121,7 +131,32 @@ test("seguridad: otra página no puede correr un turno, ni con texto plano ni de
 test("CU-01.4 POST /api/chat: un proveedor sin clave responde 500 con el motivo", async () => {
   const r = await post("/api/chat", { session: "s3", message: "hola", provider: "anthropic" });
   assert.equal(r.status, 500);
-  assert.match((await r.json()).error, /Falta ANTHROPIC_API_KEY/);
+  assert.match((await r.json()).error, /Missing ANTHROPIC_API_KEY/);
+});
+
+test("CU-01.8 POST /api/chat: la respuesta llega en trozos y el turno siguiente conserva el texto", async () => {
+  fake.state.chats = [respuestaChat({ content: "hola" }), respuestaChat({ content: "sigo" })];
+  const res = await fetch(base + "/api/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "text/event-stream" },
+    body: JSON.stringify({ session: "sse", message: "di hola", provider: "ollama" }),
+  });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") || "", /text\/event-stream/);
+  const { events, rest } = tomarEventos(await res.text());
+  assert.equal(rest, "");
+  assert.deepEqual(events.filter((e) => e.event === "delta").map((e) => e.data.text), ["ho", "la"]);
+  /** @type {{ texto: string, listo: boolean, trace: any, error: string | null, reset: boolean }} */
+  let estado = { texto: "", listo: false, trace: null, error: null, reset: false };
+  for (const evento of events) estado = aplicarEvento(estado, evento);
+  assert.equal(estado.texto, "hola");
+  assert.equal(estado.listo, true);
+  assert.ok(estado.trace && estado.trace.calls >= 1);
+  const r2 = await (await post("/api/chat", { session: "sse", message: "sigue", provider: "ollama" })).json();
+  assert.equal(r2.text, "sigo");
+  assert.equal(r2.reset, false);
+  const previo = fake.state.pedidos.at(-1).messages.find((m) => m.role === "assistant");
+  assert.equal(previo.content, "hola");
 });
 
 test("CU-04.1 POST /api/reset: el siguiente mensaje llega al modelo sin turnos anteriores", async () => {
@@ -130,4 +165,42 @@ test("CU-04.1 POST /api/reset: el siguiente mensaje llega al modelo sin turnos a
   assert.deepEqual(await (await post("/api/reset", {})).json(), { ok: true });
   await post("/api/chat", { session: "s4", message: "segundo", provider: "ollama" });
   assert.deepEqual(fake.state.pedidos.at(-1).messages.map((m) => m.role), ["system", "user"]);
+});
+
+test("CU-01.9 al reiniciar el servidor, el siguiente mensaje lleva el turno anterior", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ada-sesiones-"));
+  const antes = process.env.ADA_SESSIONS;
+  process.env.ADA_SESSIONS = dir;
+  /** @type {import("node:http").Server[]} */
+  const abiertos = [];
+  const escuchar = (/** @type {import("node:http").Server} */ s) => new Promise((ok) => {
+    s.listen(0, "127.0.0.1", () => ok(null));
+  });
+  try {
+    const a = createServer();
+    abiertos.push(a);
+    await escuchar(a);
+    const puertoA = /** @type {import("node:net").AddressInfo} */ (a.address()).port;
+    fake.state.chats = [respuestaChat({ content: "uno" }), respuestaChat({ content: "dos" })];
+    await fetch(`http://127.0.0.1:${puertoA}/api/chat`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session: "persist", message: "primero", provider: "ollama" }),
+    });
+    await new Promise((ok) => a.close(() => ok(null)));
+    const b = createServer();
+    abiertos.push(b);
+    await escuchar(b);
+    const puertoB = /** @type {import("node:net").AddressInfo} */ (b.address()).port;
+    await fetch(`http://127.0.0.1:${puertoB}/api/chat`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session: "persist", message: "segundo", provider: "ollama" }),
+    });
+    const previo = fake.state.pedidos.at(-1).messages.find((m) => m.role === "assistant");
+    assert.equal(previo.content, "uno");
+    await new Promise((ok) => b.close(() => ok(null)));
+  } finally {
+    if (antes === undefined) delete process.env.ADA_SESSIONS; else process.env.ADA_SESSIONS = antes;
+    await Promise.all(abiertos.map((s) => new Promise((ok) => s.close(() => ok(null)))));
+    await rm(dir, { recursive: true, force: true });
+  }
 });

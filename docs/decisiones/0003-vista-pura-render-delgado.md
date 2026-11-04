@@ -1,36 +1,36 @@
-# 0003. En el chat, la lógica es pura y el render no decide
+# 0003. In the chat, logic is pure and render does not decide
 
-**Estado:** aceptada, octubre de 2026.
+**Status:** accepted, October 2026.
 
-## Contexto
+## Context
 
-El chat empezó como un solo `index.html` con estilos, lógica y DOM mezclados. Probar algo exigía un navegador, y el texto del modelo se insertaba con `innerHTML`: una respuesta con `<img onerror=…>` ejecutaba código.
+The chat started as a single `index.html` with styles, logic, and the DOM mixed together. Testing anything required a browser, and the model's text was inserted with `innerHTML`: a reply with `<img onerror=…>` ran code.
 
-## Decisión
+## Decision
 
-Cada módulo de `app/js/` tiene un solo trabajo y pertenece a una de cuatro capas:
+Each module in `app/js/` has one job and belongs to one of four layers:
 
-| Capa | Qué hace | Ejemplos | Cómo se prueba |
+| Layer | What it does | Examples | How it is tested |
 |---|---|---|---|
-| Vista pura | Recibe datos y devuelve qué mostrar: textos, listas, banderas. Sin DOM, sin `fetch`, sin azar | `inspectorView()`, `buildOptions()`, `debeEnviar()` | En Node, `tests/unit/app/` |
-| Render | Pone la vista en el DOM con `createElement` y `textContent`. No decide nada | `renderInspector()`, `renderSelector()` | A través de su vista |
-| API | Habla con el servidor | `api.js` | Pruebas de integración |
-| Arranque | Conecta eventos, estado y módulos | `main.js` | No se prueba: no tiene lógica |
+| Pure view | Receives data and returns what to show: texts, lists, flags. No DOM, no `fetch`, no randomness | `inspectorView()`, `buildOptions()`, `debeEnviar()` | In Node, `tests/unit/app/` |
+| Render | Puts the view in the DOM with `createElement` and `textContent`. Decides nothing | `renderInspector()`, `renderSelector()` | Through its view |
+| API | Talks to the server | `api.js` | Integration tests |
+| Startup | Wires events, state, and modules | `main.js` | Not tested: it has no logic |
 
-Reglas que salen de aquí:
+Rules that follow:
 
-- Un `if` que decide algo de negocio no va en `main.js` ni en un `render*()`: va en una función pura con su prueba.
-- Texto que viene del modelo o del servidor se inserta siempre con `textContent`. Nunca `innerHTML`, `outerHTML` ni `insertAdjacentHTML`.
+- An `if` that decides something about the product does not go in `main.js` or in a `render*()`: it goes in a pure function with its test.
+- Text that comes from the model or the server is always inserted with `textContent`. Never `innerHTML`, `outerHTML`, or `insertAdjacentHTML`.
 
-## Consecuencias
+## Consequences
 
-- La lógica del chat se prueba en milisegundos, sin navegador ni dependencias.
-- Escribir HTML a mano con `createElement` es más largo que una plantilla. Mientras el chat sea un puñado de módulos, el costo es bajo.
+- The chat logic is tested in milliseconds, with no browser and no dependencies.
+- Writing HTML by hand with `createElement` is longer than a template. While the chat is a handful of modules, the cost is low.
 
-## Se verifica en
+## Checked by
 
-`tests/unit/arquitectura.test.js`: falla si un módulo con lógica no tiene su archivo de pruebas en `tests/unit/app/`, o si algún módulo usa `innerHTML`.
+`tests/unit/arquitectura.test.js`: it fails if a module with logic has no test file in `tests/unit/app/`, or if any module uses `innerHTML`.
 
-## Cuándo revisarla
+## When to revisit
 
-Junto con la [0001](0001-interfaz-sin-compilacion.md): si el chat crece a varias pantallas con estado compartido, un framework de componentes reemplaza el render a mano, pero la separación entre vista pura y pintura se mantiene.
+Together with [0001](0001-interfaz-sin-compilacion.md): if the chat grows to several screens with shared state, a component framework replaces the hand-written render, but the split between pure view and paint stays.

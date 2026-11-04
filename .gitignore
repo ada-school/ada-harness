@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.sessions/
+.DS_Store
+
+# Lo que el agente escribe en el sandbox de ejemplo. Tu repo va en ADA_WORKSPACE, fuera de aquí.
+workspace/*
+!workspace/.gitkeep
+
+# Memoria que el agente crea por tema. profile.md y preferences.md sí se versionan.
+harness/memory/areas/*
+!harness/memory/areas/.gitkeep

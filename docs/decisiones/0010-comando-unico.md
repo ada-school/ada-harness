@@ -1,31 +1,31 @@
-# 0010. Un comando para el chat y para la terminal
+# 0010. One command for the chat and the terminal
 
-**Estado:** aceptada, noviembre de 2026.
+**Status:** accepted, November 2026.
 
-## Contexto
+## Context
 
-Correr el proyecto pedía acordarse de dos archivos: `node src/server.js` para el chat y `node src/harness.js` para un turno. El lector de argumentos era un `filter` sobre `process.argv`, sin `--help` ni `--version`, y un flag desconocido se tomaba como nombre de proveedor.
+Running the project meant remembering two files: `node src/server.js` for the chat and `node src/harness.js` for one turn. The argument reader was a `filter` over `process.argv`, with no `--help` and no `--version`, and an unknown flag was taken as a provider name.
 
-El pedido de esta revisión era usar npm y librerías existentes para que instalar y correr fuera más fácil. El repo ya es un paquete npm. Las librerías de servidor, de CLI y de interfaz obligan a `npm install` con red, y eso es lo que la [decisión 0001](0001-interfaz-sin-compilacion.md) evita a propósito.
+This review asked to use npm and existing libraries so install and run would be easier. The repo is already an npm package. Server, CLI, and UI libraries force `npm install` with a network, and that is what [decision 0001](0001-interfaz-sin-compilacion.md) avoids on purpose.
 
-## Decisión
+## Decision
 
-- `bin/ada.js` es el comando. `npm start` abre el chat, `npm run cli` corre un turno y `npm run capas` mide las capas. Los tres llaman a ese archivo.
-- `src/cli.js` lee los argumentos con `parseArgs` de `node:util`. Subcomandos: `serve`, `run`, `capas`. Flags: proveedor, `--model`, `--port`, `--host`, `--help`, `--version`.
-- `--port` y `--host` pisan a `PORT` y `ADA_HOST` después de cargar `.env`.
-- `node src/server.js` y `node src/harness.js` delegan en el mismo lector. Sin argumentos, el primero abre el chat y el segundo corre un turno de ejemplo.
-- No hay dependencias para correr. TypeScript sigue solo en `devDependencies`.
+- `bin/ada.js` is the command. `npm start` opens the chat, `npm run cli` runs one turn, and `npm run capas` measures the layers. All three call that file.
+- `src/cli.ts` reads the arguments with `parseArgs` from `node:util`. Node runs `dist/src/cli.js`. Subcommands: `serve`, `run`, `capas`. Flags: provider, `--model`, `--port`, `--host`, `--help`, `--version`. The help text stays Spanish, including `ayuda`. The documented way to open the chat is `npm start`.
+- `--port` and `--host` override `PORT` and `ADA_HOST` after `.env` is loaded.
+- The compiled server and the compiled loop delegate to the same reader. The documented command is `npm start` for the chat and `npm run cli` for one turn. The server source is `src/server.ts` and the loop source is `src/harness.ts`. Node runs the files under `dist/`.
+- The only runtime dependency is `ajv`. TypeScript stays in `devDependencies`. `npm install` is required because `npm start` compiles the engine.
 
-## Consecuencias
+## Consequences
 
-- Ayuda y errores de argumentos salen en español, y un flag desconocido no llega al proveedor.
-- Quien clona el repo sigue sin necesitar `npm install` para ver el chat.
-- Un paquete de CLI entra solo si los subcomandos dejan de compartir opciones. Un framework de interfaz entra solo con las señales de la decisión 0001.
+- Help text and argument errors are still in Spanish, and an unknown flag never reaches the provider.
+- Someone who clones the repo runs `npm install`, then `npm start`, to see the chat.
+- A CLI package comes in only if the subcommands stop sharing options. A UI framework comes in only with the signals in decision 0001.
 
-## Se verifica en
+## Checked by
 
-`tests/unit/http-cli.test.js` y `tests/unit/arquitectura.test.js`.
+`tests/unit/http-cli.test.js` and `tests/unit/arquitectura.test.js`.
 
-## Cuándo revisarla
+## When to revisit
 
-Si el comando se publica en el registro de npm, o si `serve` y `run` necesitan opciones que ya no caben en un solo `parseArgs`.
+If the command is published to the npm registry, or if `serve` and `run` need options that no longer fit in one `parseArgs`.

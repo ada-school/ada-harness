@@ -1,765 +1,796 @@
 # ADA Harness
 
-**Una plantilla mínima y abierta para construir un AI Harness.**
+**A small, open template for building an AI harness.**
 
-Un modelo de lenguaje recibe tokens y devuelve tokens. Eso es todo lo que hace. Un *harness* es la estructura alrededor de esa llamada: decide qué tokens entran, ejecuta lo que el modelo pide, y vuelve a llamar. Esta plantilla deja esa estructura explícita en archivos de texto que puedes leer, versionar y cambiar, y la acompaña de un chat mínimo donde ves cada capa funcionando en vivo.
+A language model receives tokens and returns tokens. That is all it does. A *harness* is the structure around that call: it decides which tokens go in, runs what the model asks for, and calls again. This template leaves that structure in text files you can read, version, and change, plus a small chat where you watch each layer work live.
 
-Funciona con **Claude** (Anthropic), **Gemini** (Google) y **modelos locales con Ollama**, sin clave y sin costo por token: si tienes Ollama corriendo, el harness lo detecta solo. Eliges el modelo en el chat o con una variable, y el loop es el mismo.
+It works with **Claude** (Anthropic), **Gemini** (Google), and **local models through Ollama**, with no key and no per-token cost when Ollama is running: the harness detects it on its own. You pick the model in the chat or with a variable, and the loop stays the same.
 
-Cero dependencias para correrlo: `npm start` y listo. Node 18 o superior. Pruebas que no necesitan claves ni red, decisiones de arquitectura escritas y un proceso de casos de uso con pruebas primero para el front end. Licencia MIT.
+`npm install`, then `npm start`. Node 18 or newer. One runtime dependency, `ajv`, checks tool arguments. TypeScript compiles the engine. Tests that need no keys and no network, written architecture decisions, and a use-case process with tests first for the front end. MIT license.
 
----
+The Spanish guide is [README.es.md](README.es.md).
 
-## Índice
+## Start here
 
-1. [Empieza por el explicador interactivo](#1-empieza-por-el-explicador-interactivo)
-2. [La idea en un diagrama](#2-la-idea-en-un-diagrama)
-3. [Las capas del contexto](#3-las-capas-del-contexto)
-4. [Estructura del repositorio](#4-estructura-del-repositorio)
-5. [El loop agéntico](#5-el-loop-agéntico)
-   - [Un loop, varios modelos: Claude, Gemini y Ollama](#un-loop-varios-modelos-claude-gemini-y-ollama)
-   - [Modelos locales y gratis con Ollama](#modelos-locales-y-gratis-con-ollama)
-   - [Agregar otro proveedor](#agregar-otro-proveedor)
-6. [Cuando la ventana se llena](#6-cuando-la-ventana-se-llena)
-7. [Subagentes](#7-subagentes)
-8. [El chat mínimo y su inspector](#8-el-chat-mínimo-y-su-inspector)
-   - [Construir pantallas: casos de uso y pruebas primero](#construir-pantallas-casos-de-uso-y-pruebas-primero)
-9. [Instalación y uso](#9-instalación-y-uso)
-   - [Pruebas y tipos](#pruebas-y-tipos)
-10. [Adaptarlo a tu proyecto](#10-adaptarlo-a-tu-proyecto)
-11. [Principios que esta estructura hace cumplir](#11-principios-que-esta-estructura-hace-cumplir)
-    - [Decisiones de arquitectura](#decisiones-de-arquitectura)
-12. [Límites conocidos](#12-límites-conocidos)
+```bash
+git clone https://github.com/ada-school/ada-harness.git
+cd ada-harness
+cp .env.example .env          # one key, or none if you use Ollama
+npm install
+npm start                     # http://localhost:3000
+```
 
-[Desarrollar este repo con Claude Code](#desarrollar-este-repo-con-claude-code) · [Taller presencial](#taller-presencial) · [Referencias](#referencias)
+To build software that already lives in another repo, set its path as `ADA_WORKSPACE` in `.env` and describe the stack in `AGENTS.md`. The agent reads, writes, and runs commands only there. The steps are in [Point it at your project](#10-point-it-at-your-project). The rest of this file explains how the harness is built.
+
+The plan to finish the move to English, take the engine to TypeScript one module at a time, and keep the chat off React is in [`docs/BACKLOG.md`](docs/BACKLOG.md).
 
 ---
 
-## 1. Empieza por el explicador interactivo
+## Contents
 
-Este repo nació de un modelo mental, y ese modelo mental está en un solo archivo:
+1. [Start with the interactive explainer](#1-start-with-the-interactive-explainer)
+2. [The idea in one diagram](#2-the-idea-in-one-diagram)
+3. [Context layers](#3-context-layers)
+4. [Repository layout](#4-repository-layout)
+5. [The agent loop](#5-the-agent-loop)
+   - [One loop, several models: Claude, Gemini, and Ollama](#one-loop-several-models-claude-gemini-and-ollama)
+   - [Local, free models with Ollama](#local-free-models-with-ollama)
+   - [Add another provider](#add-another-provider)
+6. [When the window fills](#6-when-the-window-fills)
+7. [Subagents](#7-subagents)
+8. [The minimal chat and its inspector](#8-the-minimal-chat-and-its-inspector)
+   - [Building screens: use cases and tests first](#building-screens-use-cases-and-tests-first)
+9. [Install and use](#9-install-and-use)
+   - [Tests and types](#tests-and-types)
+10. [Point it at your project](#10-point-it-at-your-project)
+11. [Principles this structure enforces](#11-principles-this-structure-enforces)
+    - [Architecture decisions](#architecture-decisions)
+12. [Known limits](#12-known-limits)
+
+[Developing this repo with Claude Code](#developing-this-repo-with-claude-code) · [In-person workshop](#in-person-workshop) · [References](#references)
+
+---
+
+## 1. Start with the interactive explainer
+
+This repo started from a mental model, and that model lives in one file:
 
 **[`docs/Anatomía de un Agente.html`](docs/Anatom%C3%ADa%20de%20un%20Agente.html)**
 
-Ábrelo en el navegador (o en `http://localhost:3000/docs/Anatom%C3%ADa%20de%20un%20Agente.html` con el servidor corriendo). Son ocho capas, cada una con una pieza interactiva:
+Open it in a browser (or at `http://localhost:3000/docs/Anatom%C3%ADa%20de%20un%20Agente.html` with the server running). Eight layers, each with an interactive piece:
 
-| Capa | Qué muestra | Interacción |
+| Layer | What it shows | Interaction |
 |---|---|---|
-| 1. La llamada | El modelo elige el siguiente token de una distribución | Slider de temperatura y muestreo |
-| 2. El enfoque | El contexto no agrega conocimiento, concentra probabilidad en una región | Mapa animado, escribe tu propio prompt |
-| 3. El contexto | Cómo se ensambla el prompt real y cuánto pesa cada capa | Activa y desactiva capas |
-| 4. El loop | Un agente es un loop alrededor de la llamada | Avanza paso a paso una tarea real |
-| 5. Ventana llena | Degradación antes del límite y las tres jugadas posibles | Llena la ventana, trunca, compacta o descarga |
-| 6. Subagentes | Otro contexto, vacío, con el mismo loop | Diagrama de tres contextos |
-| 7. Mapa | Tabla de todas las capas: quién las escribe, cuándo entran, si persisten | Referencia |
-| 8. Lo invariante | Seis verdades que ninguna capa cambia | Referencia |
+| 1. The call | The model picks the next token from a distribution | Temperature slider and sampling |
+| 2. Focus | Context does not add knowledge. It concentrates probability on a region | Animated map. Write your own prompt |
+| 3. Context | How the real prompt is assembled, and what each layer weighs | Turn layers on and off |
+| 4. The loop | An agent is a loop around the call | Step through a real task |
+| 5. Full window | Quality drops before the limit, and the three moves available | Fill the window, truncate, compact, or offload |
+| 6. Subagents | Another context, empty, with the same loop | Diagram of three contexts |
+| 7. Map | Every layer: who writes it, when it enters, whether it persists | Reference |
+| 8. What does not change | Six truths no layer changes | Reference |
 
-Cada carpeta de este repositorio implementa una de esas capas. Las secciones siguientes van en el mismo orden.
+Each folder in this repository implements one of those layers. The sections below follow the same order.
 
 ---
 
-## 2. La idea en un diagrama
+## 2. The idea in one diagram
 
 ```mermaid
 flowchart LR
-    subgraph IN["Entrada: una sola secuencia de tokens"]
+    subgraph IN["Input: one sequence of tokens"]
         direction TB
         S[system.md]
         G[AGENTS.md]
-        K[índice de skills]
-        M[memoria]
-        T[definiciones de herramientas]
-        H[historial]
-        U[tu mensaje]
+        K[skills index]
+        M[memory]
+        T[tool definitions]
+        H[history]
+        U[your message]
     end
-    IN --> MODEL(("Modelo"))
-    MODEL --> OUT["Salida: tokens, uno a uno,<br/>muestreados de una distribución"]
-    OUT -->|texto| USER[Usuario]
-    OUT -->|"forma de tool_use"| HARNESS[Harness ejecuta la herramienta]
+    IN --> MODEL(("Model"))
+    MODEL --> OUT["Output: tokens, one by one,<br/>sampled from a distribution"]
+    OUT -->|text| USER[User]
+    OUT -->|"tool_use shape"| HARNESS[Harness runs the tool]
     HARNESS -->|tool_result| H
     style MODEL fill:#d9641e,color:#fff,stroke:#d9641e
 ```
 
-Tres cosas para no olvidar:
+Three things to keep:
 
-- El modelo **no recuerda nada** entre llamadas. Lo que "sabe" es lo que está en la entrada.
-- El modelo **no ejecuta nada**. Cuando "usa una herramienta" está emitiendo texto con un formato acordado. El harness lo lee y ejecuta.
-- La salida es **probabilística**. Dos llamadas iguales pueden dar resultados distintos.
+- The model **remembers nothing** between calls. What it "knows" is what is in the input.
+- The model **runs nothing**. When it "uses a tool" it is emitting text in an agreed shape. The harness reads it and runs it.
+- The output is **probabilistic**. Two identical calls can differ.
 
 ---
 
-## 3. Las capas del contexto
+## 3. Context layers
 
-Todo lo que entra a la llamada es texto, ordenado en capas. Cada capa tiene un dueño, un momento de carga y un costo en tokens. `harness/routing.json` declara cómo se carga cada una.
+Everything that enters the call is text, ordered in layers. Each layer has an owner, a load time, and a token cost. `harness/routing.json` declares how each one loads.
 
 ```mermaid
 flowchart TB
-    subgraph ALWAYS["Siempre en contexto"]
-        A1["system.md<br/>rol y reglas base"]
-        A2["AGENTS.md<br/>guía del proyecto"]
-        A3["Índice de skills<br/>solo name + description"]
-        A4["profile.md + preferences.md<br/>memoria base"]
-        A5["Índice de memoria<br/>areas/*.md, solo descripciones"]
-        A6["Definiciones de herramientas<br/>JSON que el modelo ve"]
-        A7["Historial"]
+    subgraph ALWAYS["Always in context"]
+        A1["system.md<br/>role and base rules"]
+        A2["AGENTS.md<br/>project guide"]
+        A3["Skills index<br/>name + description only"]
+        A4["profile.md + preferences.md<br/>base memory"]
+        A5["Memory index<br/>areas/*.md, descriptions only"]
+        A6["Tool definitions<br/>JSON the model sees"]
+        A7["History"]
     end
-    subgraph DEMAND["Bajo demanda (el modelo llama una herramienta)"]
-        D1["SKILL.md completo<br/>load_skill(name)"]
-        D2["areas/tema.md completo<br/>read_memory(path)"]
-        D3["Archivos del workspace<br/>read_file(path)"]
-        D4["Resultados grandes descargados<br/>workspace/.context/*.txt"]
+    subgraph DEMAND["On demand (the model calls a tool)"]
+        D1["Full SKILL.md<br/>load_skill(name)"]
+        D2["Full areas/topic.md<br/>read_memory(path)"]
+        D3["Workspace files<br/>read_file(path)"]
+        D4["Large results offloaded<br/>workspace/.context/*.txt"]
     end
-    A3 -.->|"cuando la tarea coincide"| D1
-    A5 -.->|"cuando la conversación lo toca"| D2
-    A7 -.->|"si supera 6k tokens"| D4
+    A3 -.->|"when the task matches"| D1
+    A5 -.->|"when the conversation touches it"| D2
+    A7 -.->|"if it passes 6k tokens"| D4
 ```
 
-| Capa | Archivo o fuente | Quién la escribe | Cuándo entra |
+| Layer | File or source | Who writes it | When it enters |
 |---|---|---|---|
-| System prompt | `harness/system.md` | Tú (humano, con aprobación) | Siempre |
-| Guía del proyecto | `AGENTS.md` | Tú y tu equipo | Siempre, concatenada al sistema |
-| Índice de skills | frontmatter de `harness/skills/*/SKILL.md` | Quien escribe el skill | Siempre |
-| Contenido de un skill | cuerpo del `SKILL.md` | Quien escribe el skill | Bajo demanda, `load_skill` |
-| Memoria base | `harness/memory/profile.md`, `preferences.md` | Tú, a mano | Siempre |
-| Índice de memoria | `harness/memory/areas/*.md` (descripciones) | El agente, con `write_memory` | Siempre |
-| Contenido de memoria | cuerpo de `areas/*.md` | El agente | Bajo demanda, `read_memory` |
-| Herramientas | `harness/tools/index.js` | Tú | Siempre |
-| Historial | memoria del proceso (`src/http/api.js`) | Tú y el modelo | Siempre, hasta compactar |
-| Resultados de herramientas | lo que devuelve cada ejecución | El mundo exterior | Después de cada ejecución |
+| System prompt | `harness/system.md` | You (a human, with approval) | Always |
+| Project guide | `AGENTS.md` | You and your team | Always, concatenated to the system prompt |
+| Skills index | frontmatter of `harness/skills/*/SKILL.md` | Whoever writes the skill | Always |
+| A skill's body | body of `SKILL.md` | Whoever writes the skill | On demand, `load_skill` |
+| Base memory | `harness/memory/profile.md`, `preferences.md` | You, by hand | Always |
+| Memory index | `harness/memory/areas/*.md` (descriptions) | The agent, with `write_memory` | Always |
+| Memory body | body of `areas/*.md` | The agent | On demand, `read_memory` |
+| Tools | `harness/tools/index.ts` | You | Always |
+| History | `.sessions/sessions.json` (`src/http/api.ts`) | You and the model | Always, until compaction |
+| Tool results | what each run returns | The outside world | After each run |
 
-**Índice adentro, contenido afuera.** Es el patrón que se repite en skills, memoria y resultados grandes. El modelo siempre ve qué existe; carga el contenido completo solo cuando lo necesita. En el explicador esto es "context routing".
+**Index in, body out.** The same pattern in skills, memory, and large results. The model always sees what exists. It loads the full body only when it needs it. In the explainer this is "context routing".
 
 ---
 
-## 4. Estructura del repositorio
+## 4. Repository layout
 
 ```
 ada-harness/
-├── AGENTS.md                      Guía del proyecto para el agente del harness. Se concatena a su system prompt.
-├── CLAUDE.md                      Guía para quien desarrolla este repo con Claude Code.
-├── harness/                       Todo lo que define al agente. Solo texto.
-│   ├── system.md                  Rol y reglas base.
-│   ├── routing.json               Qué capa entra siempre, bajo demanda o nunca; presupuestos.
+├── AGENTS.md                      Project guide for the harness agent. Concatenated to its system prompt.
+├── CLAUDE.md                      Guide for whoever develops this repo with Claude Code.
+├── harness/                       Everything that defines the agent. Text only.
+│   ├── system.md                  Role and base rules.
+│   ├── routing.json               Which layer is always in, on demand, or never; budgets.
 │   ├── skills/
-│   │   ├── README.md              Cómo escribir un skill.
+│   │   ├── README.md              How to write a skill.
 │   │   ├── commit-convention/SKILL.md
 │   │   ├── spec-first/SKILL.md
-│   │   └── frontend-tdd/          Proceso del front end: casos de uso y pruebas primero.
-│   │       ├── SKILL.md           Los pasos: caso de uso, rojo, verde, limpieza, listo cuando.
-│   │       ├── arquitectura.md    Las reglas del front end, sacadas de docs/decisiones/.
+│   │   └── frontend-tdd/          Front-end process: use cases and tests first.
+│   │       ├── SKILL.md           The steps: use case, red, green, cleanup, done when.
+│   │       ├── arquitectura.md    Front-end rules, taken from docs/decisiones/.
 │   │       └── plantilla-caso-de-uso.md
 │   ├── memory/
-│   │   ├── profile.md             Quién usa el harness.
-│   │   ├── preferences.md         Cómo quiere que el agente se comporte.
-│   │   └── areas/                 Un archivo por proyecto o tema. El agente los escribe.
-│   ├── agents/                    Un archivo por agente: frontmatter (name, description) + prompt.
-│   │   ├── researcher.md          Explora y resume.
-│   │   ├── reviewer.md            Revisa un cambio concreto y corre las pruebas.
-│   │   ├── frontend.md            Implementa pantallas con casos de uso y pruebas primero.
-│   │   └── qa.md                  Revisa el proyecto entero contra decisiones, casos de uso y pruebas.
+│   │   ├── profile.md             Who uses the harness.
+│   │   ├── preferences.md         How they want the agent to behave.
+│   │   └── areas/                 One file per project or topic. The agent writes them.
+│   ├── agents/                    One file per agent: frontmatter (name, description) plus prompt.
+│   │   ├── researcher.md          Explores and summarizes.
+│   │   ├── reviewer.md            Reviews one change and runs its tests.
+│   │   ├── frontend.md            Builds screens with use cases and tests first.
+│   │   └── qa.md                  Reviews the whole project against decisions, use cases, and tests.
 │   └── tools/
-│       └── index.js               Cada herramienta: definición JSON + función que la ejecuta.
+│       └── index.ts               Each tool: JSON definition plus the function that runs it.
 ├── bin/
-│   └── ada.js                     Comando único: chat, un turno o el peso de las capas.
-├── src/                           El motor. Cada archivo tiene un solo trabajo.
-│   ├── harness.js                 El loop: llamar, ejecutar herramientas, subagentes, turn().
-│   ├── context.js                 Ensambla la ventana por capas y estima tokens.
-│   ├── window.js                  La ventana llena: presupuesto, compact(), maybeOffload().
-│   ├── config.js                  Rutas del repo, archivos protegidos, carga de .env.
-│   ├── types.js                   Tipos en JSDoc: mensajes, bloques, proveedor, trace.
-│   ├── validation.js              Subconjunto de JSON Schema: el servidor valida lo que el modelo pide.
-│   ├── cli.js                     Lee los argumentos de `ada` y despacha.
+│   └── ada.js                     One command: chat, one turn, or the weight of the layers.
+├── src/                           The engine. Each file has one job. Node runs the compiled files under dist/.
+│   ├── harness.ts                 The loop: call, run tools, subagents, turn().
+│   ├── context.ts                 Layer assembly and the token estimate.
+│   ├── window.ts                  The window: budget, compact(), maybeOffload().
+│   ├── config.ts                  Paths, protected files, and .env loading.
+│   ├── types.ts                   Exported types. Provider is an interface. No runtime value.
+│   ├── validation.ts              The JSON Schema subset the server checks.
+│   ├── text.ts                    Error sentences. English by default. Spanish when ADA_LANG=es.
+│   ├── cli.ts                     The argument reader. It dispatches serve, run, and capas.
 │   ├── providers/
-│   │   ├── index.js               Registro y elección del proveedor.
-│   │   ├── anthropic.js           Claude: el formato interno ya es el suyo.
-│   │   ├── gemini.js              Gemini: traduce a generateContent y guarda las firmas.
-│   │   └── ollama.js              Ollama: detecta la instancia local y sus modelos con herramientas.
+│   │   ├── index.ts               The registry and the provider choice.
+│   │   ├── anthropic.ts           The Claude adapter. The internal format is already its format.
+│   │   ├── gemini.ts              The Gemini adapter. It translates to generateContent and keeps signatures.
+│   │   └── ollama.ts              The local adapter. It detects Ollama and models with tools.
 │   ├── http/
-│   │   ├── static.js              Qué archivos sirve: app/ y docs/, nada más.
-│   │   └── api.js                 /api/providers, /api/chat, /api/reset y las sesiones.
-│   └── server.js                  Junta static.js y api.js en un servidor HTTP. `listen()` lo usa el comando.
-├── app/                           El chat. HTML, CSS y módulos ES nativos: sin compilar.
-│   ├── index.html                 Solo estructura.
-│   ├── styles.css                 Colores por capa, iguales a los del explicador.
+│   │   ├── static.ts              The file server: app/ and docs/, nothing else.
+│   │   └── api.ts                 /api/providers, /api/chat, /api/reset, and sessions.
+│   └── server.ts                  The HTTP server. It joins the static files and the API. `listen()` is what the command uses.
+├── app/                           The chat. HTML, CSS, and native ES modules: no build.
+│   ├── index.html                 Structure only.
+│   ├── styles.css                 Colors per layer, the same as the explainer.
 │   └── js/
-│       ├── main.js                Conecta eventos, estado y módulos. No decide nada.
-│       ├── api.js                 Las tres llamadas al servidor.
-│       ├── conversacion.js        Cuándo enviar y qué mostrar de cada respuesta (lógica pura).
-│       ├── selector.js            Opciones del selector de modelo (lógica pura + render).
-│       ├── inspector.js           Qué muestra el inspector (lógica pura + render).
-│       ├── chat.js                Pinta los mensajes.
-│       └── format.js              Números y color de cada capa.
+│       ├── main.js                Wires events, state, and modules. Decides nothing.
+│       ├── api.js                 The three calls to the server.
+│       ├── conversacion.js        When to send, and what to show from each reply (pure logic).
+│       ├── selector.js            Model selector options (pure logic plus render).
+│       ├── inspector.js           What the inspector shows (pure logic plus render).
+│       ├── chat.js                Paints the messages.
+│       └── format.js              Numbers and the color of each layer.
 ├── docs/
-│   ├── Anatomía de un Agente.html    El explicador interactivo.
-│   ├── decisiones/                    Por qué el proyecto es como es: una decisión por archivo.
-│   ├── casos-de-uso/                  Qué tiene que lograr cada pantalla, con criterios numerados.
-│   └── taller/                        Material del taller: plantilla, ejemplo resuelto y descuentos.js.
-├── tests/                         Sin claves ni red externa. Ver "Pruebas y tipos".
-│   ├── unit/                      Herramientas, contexto, ventana, agentes, HTTP, terminal.
-│   │   ├── app/                   El chat: un archivo por módulo, una prueba por criterio.
-│   │   ├── arquitectura.test.js   Falla si alguien rompe una decisión verificable.
-│   │   └── casos-de-uso.test.js   Falla si un criterio no tiene prueba.
-│   ├── providers/                 Claude y Gemini con fetch simulado; Ollama con un servidor falso.
-│   ├── integration/               El servidor real de punta a punta.
-│   ├── helpers/                   fetch falso, Ollama falso, workspace temporal.
-│   ├── trazabilidad.js            Matriz de criterios contra pruebas (npm run trazabilidad).
-│   └── run.js                     Corre una capa o todas.
-├── workspace/                     Donde el agente lee, escribe y ejecuta. Nada fuera de aquí.
-├── .claude/                       Para Claude Code: agentes frontend y qa, regla del front end.
-├── .github/workflows/ci.yml       Tipos y pruebas en Node 18, 20 y 22 en cada push.
-├── .env.example                   Claves de Claude y Gemini, Ollama, modelos, puerto.
-├── jsconfig.json                  Configuración de la revisión de tipos.
-├── package.json                   Cero dependencias para correr. TypeScript solo para revisar tipos.
-├── package-lock.json              Fija la versión de las herramientas de desarrollo.
+│   ├── Anatomía de un Agente.html    The interactive explainer.
+│   ├── decisiones/                    Why the project is this way: one decision per file.
+│   ├── casos-de-uso/                  What each screen must achieve, with numbered criteria.
+│   └── taller/                        Workshop material: template, solved example, and descuentos.js.
+├── tests/                         No keys and no external network. See "Tests and types".
+│   ├── unit/                      Tools, context, window, agents, HTTP, terminal.
+│   │   ├── app/                   The chat: one file per module, one test per criterion.
+│   │   ├── arquitectura.test.js   Fails if someone breaks a checkable decision.
+│   │   └── casos-de-uso.test.js   Fails if a criterion has no test.
+│   ├── providers/                 Claude and Gemini with a fake fetch; Ollama with a fake server.
+│   ├── integration/               The real server, end to end.
+│   ├── helpers/                   Fake fetch, fake Ollama, temporary workspace.
+│   ├── trazabilidad.js            Criteria against tests (npm run trazabilidad).
+│   └── run.js                     Runs one layer or all of them.
+├── workspace/                     Example sandbox. `ADA_WORKSPACE` points it at your repo.
+├── .claude/                       For Claude Code: frontend and qa agents, front-end rule.
+├── .github/workflows/ci.yml       Types and tests on Node 18, 20, and 22 on every push.
+├── .env.example                   Keys, model, and `ADA_WORKSPACE`. Copy it to `.env`.
+├── .gitignore                     Leaves out `.env`, `node_modules`, `dist/`, and what the agent writes in the sandbox.
+├── tsconfig.json                  Typecheck configuration. It does not emit the program.
+├── tsconfig.build.json            Compiles the engine to dist/. Node runs that output.
+├── package.json                   One runtime dependency, ajv. TypeScript compiles the engine.
+├── package-lock.json              Pins the development tool versions.
+├── README.es.md                   This guide in Spanish.
 └── LICENSE                        MIT.
 ```
 
-Qué archivo responde a qué pregunta:
+Which file answers which question:
 
 ```mermaid
 flowchart LR
-    Q1["¿Quién es el agente?"] --> F1["harness/system.md"]
-    Q2["¿Cómo se trabaja en este repo?"] --> F2["AGENTS.md"]
-    Q3["¿Qué sabe hacer paso a paso?"] --> F3["harness/skills/"]
-    Q4["¿Qué recuerda de mí y de mis proyectos?"] --> F4["harness/memory/"]
-    Q5["¿Qué puede ejecutar?"] --> F5["harness/tools/index.js"]
-    Q6["¿Qué entra al contexto y cuándo?"] --> F6["harness/routing.json"]
-    Q7["¿Cómo corre el loop?"] --> F7["src/harness.js"]
-    Q8["¿A quién delega?"] --> F8["harness/agents/"]
-    Q9["¿Por qué es así?"] --> F9["docs/decisiones/"]
-    Q10["¿Qué debe lograr cada pantalla?"] --> F10["docs/casos-de-uso/"]
+    Q1["Who is the agent?"] --> F1["harness/system.md"]
+    Q2["How do we work in this repo?"] --> F2["AGENTS.md"]
+    Q3["What can it do, step by step?"] --> F3["harness/skills/"]
+    Q4["What does it remember about me and my projects?"] --> F4["harness/memory/"]
+    Q5["What can it run?"] --> F5["harness/tools/index.ts"]
+    Q6["What enters context, and when?"] --> F6["harness/routing.json"]
+    Q7["How does the loop run?"] --> F7["src/harness.ts"]
+    Q8["Who does it delegate to?"] --> F8["harness/agents/"]
+    Q9["Why is it this way?"] --> F9["docs/decisiones/"]
+    Q10["What must each screen achieve?"] --> F10["docs/casos-de-uso/"]
 ```
 
 ---
 
-## 5. El loop agéntico
+## 5. The agent loop
 
-No existe un "módulo de agencia" dentro del modelo. `runAgent()` en `src/harness.js` es un ciclo de cuatro pasos. Lo que pasa cuando la ventana se llena vive aparte, en `src/window.js`:
+There is no "agency module" inside the model. `runAgent()` in `src/harness.ts` is a four-step cycle. What happens when the window fills lives apart, in `src/window.ts`:
 
 ```mermaid
 flowchart TD
-    START(["Mensaje del usuario"]) --> ASM["Paso 1: assembleSystem() + historial<br/>system + guía + índices + memoria + mensajes"]
-    ASM --> CHECK{"¿tokens estimados<br/>superan presupuesto × 0.8?"}
-    CHECK -->|sí| COMPACT["compact() en window.js<br/>una llamada extra resume lo viejo"]
+    START(["User message"]) --> ASM["Step 1: assembleSystem() + history<br/>system + guide + indexes + memory + messages"]
+    ASM --> CHECK{"estimated tokens<br/>over budget × 0.8?"}
+    CHECK -->|yes| COMPACT["compact() in window.ts<br/>one extra call summarizes the old part"]
     COMPACT --> CALL
-    CHECK -->|no| CALL["Paso 2: callModel()<br/>el proveedor traduce y llama"]
+    CHECK -->|no| CALL["Step 2: callModel()<br/>the provider translates and calls"]
     CALL --> STOP{"stop_reason"}
-    STOP -->|"end_turn"| DONE(["Devolver texto. Fin del turno"])
-    STOP -->|"tool_use"| EXEC["Paso 3: ejecutar cada herramienta<br/>localmente, dentro de workspace/"]
-    EXEC --> OFF{"¿resultado<br/>supera 6k tokens?"}
-    OFF -->|sí| DISK["maybeOffload() en window.js<br/>guarda en workspace/.context/<br/>deja referencia + primeras líneas"]
+    STOP -->|"end_turn"| DONE(["Return text. End of the turn"])
+    STOP -->|"tool_use"| EXEC["Step 3: run each tool<br/>locally, inside the workspace"]
+    EXEC --> OFF{"result<br/>over 6k tokens?"}
+    OFF -->|yes| DISK["maybeOffload() in window.ts<br/>saves to workspace/.context/<br/>leaves a reference plus the first lines"]
     OFF -->|no| APPEND
-    DISK --> APPEND["Paso 4: pegar tool_result al historial"]
+    DISK --> APPEND["Step 4: append tool_result to history"]
     APPEND --> ASM
     style CALL fill:#d9641e,color:#fff,stroke:#d9641e
     style COMPACT fill:#d9641e,color:#fff,stroke:#d9641e
 ```
 
-Lo que esto implica y el chat te muestra:
+What this means, and what the chat shows you:
 
-- **Un turno puede ser muchas llamadas.** El contador "llamadas (turno)" del inspector lo hace visible.
-- **El contexto solo crece dentro del turno.** Cada llamada reenvía todo lo anterior. Por eso existen la compactación y la descarga a disco.
-- **El loop tiene un tope** (`maxToolLoops` en `routing.json`). Un modelo que pide herramientas sin parar es un bug, no una virtud.
+- **One turn can be many calls.** The inspector's "calls (turn)" counter makes that visible.
+- **Context only grows inside the turn.** Each call resends everything so far. That is why compaction and disk offload exist.
+- **The loop has a cap** (`maxToolLoops` in `routing.json`). A model that asks for tools forever is a bug, not a virtue.
 
-Secuencia completa de un turno con una herramienta:
+Full sequence of a turn with one tool:
 
 ```mermaid
 sequenceDiagram
-    participant U as Usuario
-    participant H as Harness (src/harness.js)
-    participant M as Modelo (API)
-    participant T as Herramienta (tools/index.js)
-    U->>H: "busca el precio del dólar y guárdalo"
-    H->>H: assembleSystem() + historial
+    participant U as User
+    participant H as Harness (src/harness.ts)
+    participant M as Model (API)
+    participant T as Tool (tools/index.ts)
+    U->>H: "look up the dollar price and save it"
+    H->>H: assembleSystem() + history
     H->>M: messages + tools
     M-->>H: tool_use: web_fetch(url)
     H->>T: run({url})
-    T-->>H: texto de la página
-    H->>H: ¿> 6k tokens? descargar a disco
+    T-->>H: page text
+    H->>H: over 6k tokens? offload to disk
     H->>M: messages + tool_result
     M-->>H: tool_use: write_file(dolar.txt)
     H->>T: run({path, content})
     T-->>H: "ok, 5 bytes"
     H->>M: messages + tool_result
-    M-->>H: end_turn: "Listo, guardé 4.187 COP"
-    H-->>U: texto + trace (llamadas, herramientas, capas)
+    M-->>H: end_turn: "Done, I saved 4,187 COP"
+    H-->>U: text plus trace (calls, tools, layers)
 ```
 
-### Un loop, varios modelos: Claude, Gemini y Ollama
+### One loop, several models: Claude, Gemini, and Ollama
 
-El loop no sabe con qué modelo habla. Trabaja con un historial en formato interno (bloques `text`, `tool_use` y `tool_result`) y `callModel()` se lo entrega a un proveedor, que lo traduce a su API y traduce la respuesta de vuelta.
+The loop does not know which model it is talking to. It works with a history in an internal format (`text`, `tool_use`, and `tool_result` blocks) and `callModel()` hands that to a provider, which translates it to that API and translates the reply back.
 
 ```mermaid
 flowchart LR
-    LOOP["src/harness.js<br/>runAgent()"] --> CM["callModel()"]
-    CM --> SEL{"proveedor<br/>selector del chat<br/>o ADA_PROVIDER"}
-    SEL -->|anthropic| A["providers/anthropic.js<br/>casi sin traducción"]
-    SEL -->|gemini| G["providers/gemini.js<br/>traduce a generateContent"]
-    SEL -->|ollama| O["providers/ollama.js<br/>traduce a /api/chat"]
+    LOOP["src/harness.ts<br/>runAgent()"] --> CM["callModel()"]
+    CM --> SEL{"provider<br/>chat selector<br/>or ADA_PROVIDER"}
+    SEL -->|anthropic| A["providers/anthropic.ts<br/>almost no translation"]
+    SEL -->|gemini| G["providers/gemini.ts<br/>translates to generateContent"]
+    SEL -->|ollama| O["providers/ollama.ts<br/>translates to /api/chat"]
     A --> AA[("api.anthropic.com<br/>/v1/messages")]
     G --> GG[("generativelanguage<br/>.googleapis.com")]
-    O --> OO[("localhost:11434<br/>tu máquina")]
+    O --> OO[("localhost:11434<br/>your machine")]
 ```
 
-Qué traduce el adaptador de Gemini:
+What the Gemini adapter translates:
 
-| Formato interno (Claude) | Gemini `generateContent` |
+| Internal format (Claude) | Gemini `generateContent` |
 |---|---|
 | `system` | `systemInstruction.parts[].text` |
 | `tools[].input_schema` | `tools[].functionDeclarations[].parameters` |
-| rol `assistant` | rol `model` |
-| bloque `tool_use` (`id`, `name`, `input`) | parte `functionCall` (`id`, `name`, `args`) |
-| bloque `tool_result` | parte `functionResponse` con el mismo `id` y `name`, en un turno `user` |
-| `stop_reason: "tool_use"` | hay partes `functionCall` (Gemini responde `STOP` igual) |
+| `assistant` role | `model` role |
+| `tool_use` block (`id`, `name`, `input`) | `functionCall` part (`id`, `name`, `args`) |
+| `tool_result` block | `functionResponse` part with the same `id` and `name`, in a `user` turn |
+| `stop_reason: "tool_use"` | there are `functionCall` parts (Gemini still replies `STOP`) |
 | `usage.input_tokens` | `usageMetadata.promptTokenCount` |
 
-Lo delicado son las **firmas de pensamiento**. Gemini 3 y 4 adjuntan una `thoughtSignature` a ciertas partes, siempre a la primera `functionCall` de cada paso, y exigen recibirla intacta en la llamada siguiente; si falta en el turno actual, la API responde 400. El adaptador la guarda en el bloque interno como `_gemini.thoughtSignature` y la repone al traducir. El adaptador de Claude quita esos campos privados antes de enviar.
+The delicate part is **thought signatures**. Gemini 3 and 4 attach a `thoughtSignature` to some parts, always to the first `functionCall` of each step, and require it back intact on the next call. If it is missing on the current turn, the API returns 400. The adapter stores it on the internal block as `_gemini.thoughtSignature` and puts it back when translating. The Claude adapter strips those private fields before sending.
 
-Por eso **cambiar de proveedor empieza una conversación nueva**: cada API devuelve firmas e ids que solo entiende ella.
+That is why **switching provider starts a new conversation**: each API returns signatures and ids that only it understands.
 
-### Modelos locales y gratis con Ollama
+### Local, free models with Ollama
 
-[Ollama](https://ollama.com/download) corre modelos abiertos en tu máquina: sin clave, sin costo por token y sin que tus datos salgan de tu computador. El harness lo busca al arrancar en `OLLAMA_HOST` (por defecto `http://localhost:11434`) y, si lo encuentra, ofrece en el selector cada modelo instalado:
+[Ollama](https://ollama.com/download) runs open models on your machine: no key, no per-token cost, and your data stays on your computer. The harness looks for it at startup on `OLLAMA_HOST` (default `http://localhost:11434`) and, if it finds it, offers every installed model in the selector:
 
-- **local, gratis**: modelos descargados que saben usar herramientas. Son los que el agente puede usar.
-- **nube, requiere cuenta**: modelos de la nube de Ollama. Corren en sus servidores y dependen de tu plan.
-- **no usa herramientas**: aparecen deshabilitados. Un agente sin herramientas no puede leer ni escribir nada.
+- **local, free**: downloaded models that can use tools. Those are the ones the agent can use.
+- **cloud, account required**: Ollama cloud models. They run on Ollama's servers and depend on your plan.
+- **does not use tools**: shown disabled. An agent without tools cannot read or write anything.
 
-Si no hay claves de Claude ni Gemini, Ollama se elige solo.
+If there is no Claude key and no Gemini key, Ollama is chosen on its own.
 
 ```bash
-ollama pull qwen3:8b          # unos 5 GB, una sola vez
-node src/server.js            # "Ollama en http://localhost:11434: qwen3:8b"
+ollama pull qwen3:8b          # about 5 GB, once
+npm start                     # "Ollama en http://localhost:11434: qwen3:8b"
 ```
 
 ```mermaid
 flowchart LR
-    START(["node src/server.js"]) --> TAGS{"GET /api/tags<br/>responde en 800 ms?"}
-    TAGS -->|no| NO["Ollama no detectado<br/>el selector lo indica"]
-    TAGS -->|sí| CAP{"capabilities<br/>incluye tools?"}
-    CAP -->|no| DIS["opción deshabilitada"]
-    CAP -->|sí| REM{"remote_host?"}
-    REM -->|sí| NUBE["nube, requiere cuenta"]
-    REM -->|no| LOCAL["local, gratis<br/>se elige primero"]
+    START(["npm start"]) --> TAGS{"GET /api/tags<br/>answers within 800 ms?"}
+    TAGS -->|no| NO["Ollama not detected<br/>the selector says so"]
+    TAGS -->|yes| CAP{"capabilities<br/>include tools?"}
+    CAP -->|no| DIS["option disabled"]
+    CAP -->|yes| REM{"remote_host?"}
+    REM -->|yes| NUBE["cloud, account required"]
+    REM -->|no| LOCAL["local, free<br/>chosen first"]
 ```
 
-Tres cosas que el adaptador cuida y que conviene entender:
+Three things the adapter handles, and that are worth understanding:
 
-| Qué | Por qué importa | Qué hace el harness |
+| What | Why it matters | What the harness does |
 |---|---|---|
-| **Ventana de contexto** | Con menos de 24 GB de VRAM, Ollama usa 4k tokens por defecto y trunca el inicio en silencio, system prompt incluido. Solo las capas fijas del harness ya pesan ~1.600 (`npm run capas`). | Pide `num_ctx` de 16.384 (`ADA_OLLAMA_NUM_CTX`, mínimo 8.192) y el loop compacta contra esa ventana, no contra los 120.000 de `routing.json`. El inspector muestra la ventana real. |
-| **Un solo modelo en memoria** | Cargar un segundo modelo para los subagentes duplica la memoria en una máquina chica. | Los subagentes usan el mismo modelo, salvo que definas `ADA_OLLAMA_FAST_MODEL`. |
-| **Resultados grandes** | En 16k tokens, un resultado de 6k es un tercio de la ventana. | El umbral para mandar resultados a disco baja a un cuarto de la ventana. |
+| **Context window** | With less than 24 GB of VRAM, Ollama uses 4k tokens by default and silently truncates the start, system prompt included. The harness fixed layers already weigh about 1,700 tokens (`npm run capas`). | Asks for a `num_ctx` of 16,384 (`ADA_OLLAMA_NUM_CTX`, minimum 8,192) and the loop compacts against that window, not against the 120,000 in `routing.json`. The inspector shows the real window. |
+| **One model in memory** | Loading a second model for subagents doubles memory on a small machine. | Subagents use the same model, unless you set `ADA_OLLAMA_FAST_MODEL`. |
+| **Large results** | In 16k tokens, a 6k result is a third of the window. | The threshold for sending results to disk drops to a quarter of the window. |
 
-Qué traduce el adaptador de Ollama:
+What the Ollama adapter translates:
 
-| Formato interno | Ollama `/api/chat` |
+| Internal format | Ollama `/api/chat` |
 |---|---|
-| `system` | primer mensaje con rol `system` |
-| `tools[].input_schema` | `tools[].function.parameters`, con `type: "function"` |
-| bloque `tool_use` | `message.tool_calls[].function` (`name`, `arguments` como objeto; `id` solo si Ollama lo mandó) |
-| bloque `tool_result` | un mensaje rol `tool` por resultado, con `tool_name` y `tool_call_id` si existe |
+| `system` | first message with role `system` |
+| `tools[].input_schema` | `tools[].function.parameters`, with `type: "function"` |
+| `tool_use` block | `message.tool_calls[].function` (`name`, `arguments` as an object; `id` only if Ollama sent one) |
+| `tool_result` block | one `tool` role message per result, with `tool_name` and `tool_call_id` if it exists |
 | `usage.input_tokens` | `prompt_eval_count` |
 
-Modelos sugeridos para empezar, según su soporte de herramientas y tamaño (la oferta cambia rápido; prueba con tus propias tareas):
+Suggested models to start with, by tool support and size (the list changes fast; try them on your own tasks):
 
-| Modelo | Descarga aprox. | Para qué |
+| Model | Download, about | For |
 |---|---|---|
-| `qwen3:8b` | 5 GB | Agente general: herramientas y razonamiento entre llamadas |
-| `llama3.1:8b` | 5 GB | Alternativa muy usada en ejemplos y tutoriales |
-| `qwen3:4b` | 2,5 GB | Máquinas con poca memoria; menos fiable en tareas largas |
+| `qwen3:8b` | 5 GB | General agent: tools and reasoning across calls |
+| `llama3.1:8b` | 5 GB | A widely used alternative in examples and tutorials |
+| `qwen3:4b` | 2.5 GB | Machines with little memory; less reliable on long tasks |
 
-Un modelo local de 8B es mucho más chico que Claude o Gemini: sigue bien pasos simples, pero se equivoca más eligiendo herramientas y se pierde en tareas largas. Es la mejor forma de ver el harness funcionar sin pagar, y una buena lección sobre cuánto del resultado depende del modelo y cuánto del contexto.
+A local 8B model is much smaller than Claude or Gemini. It follows simple steps, and it picks the wrong tool more often and loses the thread on long tasks. It is the best way to see the harness work without paying, and a clear lesson in how much of the result depends on the model and how much on the context.
 
-### Agregar otro proveedor
+### Add another provider
 
-Para sumar otro (OpenAI, Mistral…), crea `src/providers/<nombre>.js` con el mismo contrato y regístralo en `src/providers/index.js`. El contrato es el tipo `Provider` de `src/types.js`; anota tu objeto con `@satisfies` y `npm run typecheck` te avisa si falta algo:
+To add one (OpenAI, Mistral, and so on), create `src/providers/<name>.js` with the same contract and register it in `src/providers/index.ts`. The contract is the `Provider` interface in `src/types.ts`. Annotate your object with `@satisfies` and `npm run typecheck` tells you if something is missing. The import in JSDoc keeps the `.js` suffix:
 
 ```js
 /** @satisfies {import("../types.js").Provider} */
-export const miProveedor = {
+export const myProvider = {
   name, label, keyEnv, model(), fastModel(), configured(),
   call({ model, system, messages, tools, maxTokens }),   // -> { content, stop_reason, usage }
-  refresh?(), contextWindow?(model), status?(),          // opcionales, los usa Ollama
+  refresh?(), contextWindow?(model), status?(),          // optional, Ollama uses them
 };
 ```
 
-Después agrega sus pruebas en `tests/providers/`, con `fakeFetch` de `tests/helpers/`: simula la API con respuestas en su formato documentado y verifica la traducción de ida y de vuelta, sobre todo ids de herramientas y campos privados.
+Then add its tests in `tests/providers/`, with `fakeFetch` from `tests/helpers/`: simulate the API with replies in its documented format and check the translation both ways, especially tool ids and private fields.
 
 ---
 
-## 6. Cuando la ventana se llena
+## 6. When the window fills
 
-La ventana tiene un límite duro, pero la calidad baja mucho antes: con la ventana medio llena el modelo reparte atención entre demasiado texto y pierde lo que está en el medio. El harness tiene tres jugadas, y esta plantilla implementa dos de ellas automáticamente.
+The window has a hard limit, but quality drops much earlier: with the window half full the model splits attention across too much text and loses what is in the middle. The harness has three moves, and this template runs two of them on its own.
 
 ```mermaid
 flowchart LR
-    FULL["Ventana al 80% del presupuesto"] --> T1
+    FULL["Window at 80% of the budget"] --> T1
     FULL --> T2
     FULL --> T3
-    T1["Truncar<br/>borrar lo más viejo"] --> R1["Barato. Lo borrado no vuelve.<br/>No implementado: no sirve para trabajo largo."]
-    T2["Compactar<br/>resumir lo viejo con una llamada extra"] --> R2["Conserva decisiones y estado.<br/>Pierde cifras y matices.<br/>compact() en src/window.js"]
-    T3["Descargar a archivos<br/>resultado grande a disco + referencia"] --> R3["No se pierde nada. Se relee si hace falta.<br/>maybeOffload() en src/window.js"]
+    T1["Truncate<br/>delete the oldest"] --> R1["Cheap. What was deleted does not come back.<br/>Not implemented: it does not serve long work."]
+    T2["Compact<br/>summarize the old part with one extra call"] --> R2["Keeps decisions and state.<br/>Loses figures and nuance.<br/>compact() in src/window.ts"]
+    T3["Offload to files<br/>large result to disk plus a reference"] --> R3["Nothing is lost. It is reread if needed.<br/>maybeOffload() in src/window.ts"]
     style T2 fill:#d9641e,color:#fff,stroke:#d9641e
     style T3 fill:#d9641e,color:#fff,stroke:#d9641e
 ```
 
-Parámetros en `harness/routing.json`:
+Parameters in `harness/routing.json`:
 
 ```jsonc
 {
-  "contextBudgetTokens": 120000,     // presupuesto, no el límite del modelo
-  "compactAt": 0.8,                   // compactar al 80%
-  "keepLastMessagesOnCompact": 4,     // los últimos N mensajes quedan intactos
-  "layers": { "toolResults": { "offloadAbove": 6000, "offloadTo": ".context" } }   // dentro del workspace
+  "contextBudgetTokens": 120000,     // budget, not the model's limit
+  "compactAt": 0.8,                   // compact at 80%
+  "keepLastMessagesOnCompact": 4,     // the last N messages stay intact
+  "layers": { "toolResults": { "offloadAbove": 6000, "offloadTo": ".context" } }   // inside the workspace
 }
 ```
 
-Todo esto vive en `src/window.js`, separado del loop:
+All of this lives in `src/window.ts`, separate from the loop:
 
-| Función | Qué decide | Se prueba sin modelo |
+| Function | What it decides | Tested without a model |
 |---|---|---|
-| `budgetFor()` | El presupuesto real: el de `routing.json` o la ventana del modelo, la que sea menor | Sí |
-| `planCompaction()` | `"ok"`, `"compact"` o `"full"` (lo fijo ya no cabe y resumir no libera nada) | Sí |
-| `compact()` | Resume lo viejo con el modelo rápido y deja los últimos mensajes intactos | Con un proveedor falso |
-| `maybeOffload()` | Si un resultado pasa de `offloadAbove` o de un cuarto de la ventana, lo guarda en disco | Sí |
+| `budgetFor()` | The real budget: `routing.json` or the model's window, whichever is smaller | Yes |
+| `planCompaction()` | `"ok"`, `"compact"`, or `"full"` (the fixed part no longer fits and summarizing frees nothing) | Yes |
+| `compact()` | Summarizes the old part with the fast model and leaves the last messages intact | With a fake provider |
+| `maybeOffload()` | If a result passes `offloadAbove` or a quarter of the window, it saves it to disk | Yes |
 
-Detalle de implementación que importa: la API exige que el historial alterne `user` y `assistant` y empiece en `user`. `compact()` reemplaza lo viejo por un par `user` (resumen) + `assistant` (acuse) y recorta la cola para que siga alternando.
+One implementation detail that matters: the API requires history to alternate `user` and `assistant` and to start with `user`. `compact()` replaces the old part with a `user` (summary) plus `assistant` (acknowledgement) pair and trims the tail so it keeps alternating.
 
 ---
 
-## 7. Subagentes
+## 7. Subagents
 
-Un subagente es **otra ventana de contexto**, vacía, corriendo el mismo loop con su propio system prompt y un subconjunto de herramientas. No ve la conversación del padre. Su informe final vuelve como un `tool_result` más.
+A subagent is **another context window**, empty, running the same loop with its own system prompt and a subset of tools. It does not see the parent's conversation. Its final report comes back as one more `tool_result`.
 
 ```mermaid
 flowchart TB
-    subgraph A["Contexto A: orquestador (modelo principal)"]
-        A1[system.md + AGENTS.md + índices + memoria]
-        A2["user: investiga competidores y arma el informe"]
-        A3["assistant → spawn_agent(researcher, 'competidor X')"]
-        A4["tool_result: informe X (800 tokens)"]
-        A5["assistant: informe consolidado"]
+    subgraph A["Context A: orchestrator (main model)"]
+        A1[system.md + AGENTS.md + indexes + memory]
+        A2["user: research competitors and write the report"]
+        A3["assistant → spawn_agent(researcher, 'competitor X')"]
+        A4["tool_result: report X (800 tokens)"]
+        A5["assistant: consolidated report"]
         A1 --> A2 --> A3 --> A4 --> A5
     end
-    subgraph B["Contexto B: researcher (modelo rápido), vacío al inicio"]
+    subgraph B["Context B: researcher (fast model), empty at the start"]
         B1[agents/researcher.md + AGENTS.md]
-        B2["user: 'competidor X'"]
+        B2["user: 'competitor X'"]
         B3["assistant → web_fetch ×6"]
         B4["tool_result ×6 (40k tokens)"]
-        B5["assistant: informe X (800 tokens)"]
+        B5["assistant: report X (800 tokens)"]
         B1 --> B2 --> B3 --> B4 --> B5
     end
-    A3 -.->|"abre contexto nuevo"| B1
-    B5 -.->|"solo el informe vuelve"| A4
+    A3 -.->|"opens a new context"| B1
+    B5 -.->|"only the report comes back"| A4
 ```
 
-Los 40k tokens de búsqueda se quedan en B. A recibe 800. Esa asimetría es la razón de existir de los subagentes.
+The 40k search tokens stay in B. A receives 800. That asymmetry is why subagents exist.
 
-La plantilla trae cuatro:
+The template ships four:
 
-| Agente | Para qué | Herramientas | Modelo |
+| Agent | For | Tools | Model |
 |---|---|---|---|
-| `researcher` | Explorar y resumir | `list_dir`, `read_file`, `web_fetch` | rápido |
-| `reviewer` | Revisar un cambio concreto y correr sus pruebas | `list_dir`, `read_file`, `run_command` | rápido |
-| `frontend` | Implementar pantallas con casos de uso y pruebas primero | las de lectura, `write_file`, `run_command`, `load_skill` | principal |
-| `qa` | Revisar el proyecto entero contra decisiones, casos de uso y pruebas. No escribe | las de lectura, `run_command`, `load_skill` | principal |
+| `researcher` | Explore and summarize | `list_dir`, `read_file`, `web_fetch` | fast |
+| `reviewer` | Review one change and run its tests | `list_dir`, `read_file`, `run_command` | fast |
+| `frontend` | Build screens with use cases and tests first | the read tools, `write_file`, `run_command`, `load_skill` | main |
+| `qa` | Review the whole project against decisions, use cases, and tests. It does not write | the read tools, `run_command`, `load_skill` | main |
 
-Un agente es un archivo y una entrada en `routing.json`, nada de código ([decisión 0008](docs/decisiones/0008-agentes-por-archivo.md)). El harness arma `spawn_agent` en cada turno desde ese índice, igual que el índice de skills:
+An agent is a file and an entry in `routing.json`, not code ([decision 0008](docs/decisiones/0008-agentes-por-archivo.md)). The harness builds `spawn_agent` each turn from that index, the same way it builds the skills index:
 
 ```mermaid
 flowchart LR
-    F["harness/agents/*.md<br/>frontmatter: name + description"] --> IDX["agentsIndex()<br/>src/context.js"]
+    F["harness/agents/*.md<br/>frontmatter: name + description"] --> IDX["agentsIndex()<br/>src/context.ts"]
     R["routing.json → agents<br/>tools · maxToolLoops · model"] --> IDX
-    IDX --> SP["spawn_agent<br/>una línea por agente"]
-    SP --> M(("Agente principal"))
-    M -->|"spawn_agent(frontend, tarea)"| SUB["Subagente frontend<br/>cuerpo de frontend.md + AGENTS.md<br/>solo sus herramientas, su modelo"]
+    IDX --> SP["spawn_agent<br/>one line per agent"]
+    SP --> M(("Main agent"))
+    M -->|"spawn_agent(frontend, task)"| SUB["frontend subagent<br/>body of frontend.md + AGENTS.md<br/>only its tools, its model"]
     style SP fill:#d9641e,color:#fff,stroke:#d9641e
 ```
 
-Qué configura cada uno:
+What configures each one:
 
-| | Dónde | Qué controla |
+| | Where | What it controls |
 |---|---|---|
-| System prompt | cuerpo de `harness/agents/<nombre>.md` | Rol, proceso, formato del informe, tamaño máximo |
-| Cuándo lo elige el modelo | `description` del frontmatter | Una línea dentro de `spawn_agent`. Viaja en cada llamada: mantenla corta |
-| Herramientas visibles | `routing.json` → `agents.<nombre>.tools` | Un investigador no escribe; un revisor no navega |
-| Tope de iteraciones | `routing.json` → `agents.<nombre>.maxToolLoops` | Costo máximo por delegación |
-| Modelo | `routing.json` → `agents.<nombre>.model` | `"fast"` (por defecto) o `"main"`. El rápido sale de `ADA_*_FAST_MODEL`; con Ollama, por defecto es el mismo modelo |
+| System prompt | body of `harness/agents/<name>.md` | Role, process, report format, maximum size |
+| When the model picks it | frontmatter `description` | One line inside `spawn_agent`. It travels on every call: keep it short |
+| Visible tools | `routing.json` → `agents.<name>.tools` | A researcher does not write; a reviewer does not browse |
+| Iteration cap | `routing.json` → `agents.<name>.maxToolLoops` | Maximum cost per delegation |
+| Model | `routing.json` → `agents.<name>.model` | `"fast"` (the default) or `"main"`. The fast model comes from `ADA_*_FAST_MODEL`. With Ollama, the default is the same model |
 
-Cuándo **no** usarlos: si la tarea depende de lo que ya está en el contexto del padre, el subagente arranca frío y hay que escribirle todo. Ahí solo agregas latencia y pérdida de información.
+When **not** to use them: if the task depends on what is already in the parent's context, the subagent starts cold and you have to write everything into the task. That only adds latency and lost information.
 
 ---
 
-## 8. El chat mínimo y su inspector
+## 8. The minimal chat and its inspector
 
-`app/` es una pantalla: conversación a la izquierda, inspector a la derecha. El inspector es el diagrama del explicador, en vivo. Arriba, el selector **Modelo** muestra los proveedores con clave y cada modelo de Ollama detectado, y el inspector dice con cuál habló la última llamada y de qué tamaño es su ventana.
+`app/` is one screen: the conversation on the left, the inspector on the right. The inspector is the explainer's diagram, live. At the top, the **Model** selector shows providers that have a key and each detected Ollama model, and the inspector says which one the last call talked to and how large its window is.
 
 ```mermaid
 flowchart LR
     subgraph UI["app/ (index.html + js/)"]
-        CHAT[Conversación]
-        INS["Inspector<br/>• ventana por capas<br/>• llamadas del turno<br/>• herramientas<br/>• tokens reales de entrada<br/>• eventos: compactación, subagentes"]
+        CHAT[Conversation]
+        INS["Inspector<br/>• window by layer<br/>• calls in the turn<br/>• tools<br/>• real input tokens<br/>• events: compaction, subagents"]
     end
-    CHAT -->|"POST /api/chat {session, message, provider, model}"| SRV[src/http/api.js]
-    SRV --> LOOP["src/harness.js: turn()"]
+    CHAT -->|"POST /api/chat {session, message, provider, model}"| SRV[src/http/api.ts]
+    SRV --> LOOP["src/harness.ts: turn()"]
     LOOP -->|"{text, trace}"| SRV
     SRV --> CHAT
     SRV --> INS
 ```
 
-Qué mirar en el inspector después de cada mensaje:
+What to look at in the inspector after each message:
 
-- **Ventana por capas.** Cuánto pesó cada capa en la última llamada. Verás que las definiciones de herramientas y el historial pesan mucho más que tu mensaje.
-- **Tokens de entrada reales.** `usage.input_tokens` que devuelve la API, al lado del estimado local (4 caracteres por token). La diferencia te calibra el estimador.
-- **Eventos del loop.** Cada herramienta con su entrada recortada, cada compactación con cuántos mensajes resumió, cada subagente con sus llamadas.
+- **Window by layer.** What each layer weighed on the last call. Tool definitions and history weigh much more than your message.
+- **Real input tokens.** `usage.input_tokens` from the API, next to the local estimate (4 characters per token). The gap calibrates the estimator.
+- **Loop events.** Each tool with its input trimmed, each compaction with how many messages it summarized, each subagent with its calls.
 
-El historial vive en memoria del proceso (`createSessionStore()` en `src/http/api.js`). Reiniciar el servidor lo borra. Para persistirlo, reemplaza ese objeto por uno que guarde el `history` de cada sesión en disco: tiene cuatro métodos y nada más depende de cómo los implementes.
+History lives in `.sessions/sessions.json` (`createSessionStore()` in `src/http/api.ts`). Restarting the server keeps it. `ADA_SESSIONS` moves the folder. The page starts empty after a reload; the same browser keeps the session id, so the model still has the turns. The tools cannot read `.sessions`.
 
-Cómo está hecho el chat, para que sea fácil de cambiar:
+How the chat is built, so it stays easy to change:
 
-- **Sin compilar.** HTML, un CSS y módulos ES nativos que el navegador carga tal cual. No hay `npm install` para verlo.
-- **Lo que decide, separado de lo que pinta.** Cada decisión es una función pura: `debeEnviar()` y `lineasDeRespuesta()` en `conversacion.js`, `buildOptions()` en `selector.js`, `inspectorView()` en `inspector.js`. Los `render*()` solo pintan y `main.js` solo conecta. Las pruebas corren las funciones puras en Node, sin navegador ([decisión 0003](docs/decisiones/0003-vista-pura-render-delgado.md)).
-- **Texto del modelo siempre como texto.** Todo se inserta con `textContent`. Una prueba falla si algún módulo usa `innerHTML`, así una respuesta con `<img onerror=…>` se ve literal y no se ejecuta.
+- **No build for the chat.** HTML, one CSS file, and native ES modules the browser loads as they are. `npm install` and `npm start` compile the engine that serves those files.
+- **What decides is separate from what paints.** Each decision is a pure function: `debeEnviar()` and `lineasDeRespuesta()` in `conversacion.js`, `buildOptions()` in `selector.js`, `inspectorView()` in `inspector.js`. The `render*()` functions only paint, and `main.js` only wires them. Tests run the pure functions in Node, with no browser ([decision 0003](docs/decisiones/0003-vista-pura-render-delgado.md)).
+- **Model text is always text.** Everything is inserted with `textContent`. A test fails if any module uses `innerHTML`, so a reply with `<img onerror=…>` shows up literally and does not run.
 
-### Construir pantallas: casos de uso y pruebas primero
+### Building screens: use cases and tests first
 
-Todo cambio que una persona note en pantalla sigue el mismo ciclo ([decisión 0007](docs/decisiones/0007-casos-de-uso-y-tdd.md)). El procedimiento completo está en el skill [`frontend-tdd`](harness/skills/frontend-tdd/SKILL.md) y las reglas en su [`arquitectura.md`](harness/skills/frontend-tdd/arquitectura.md).
+Every change a person would notice on screen follows the same cycle ([decision 0007](docs/decisiones/0007-casos-de-uso-y-tdd.md)). The full procedure is in the [`frontend-tdd`](harness/skills/frontend-tdd/SKILL.md) skill, and the rules are in its [`arquitectura.md`](harness/skills/frontend-tdd/arquitectura.md).
 
 ```mermaid
 flowchart LR
-    CU["Caso de uso<br/>docs/casos-de-uso/<br/>criterios CU-NN.M"] --> ROJO["Rojo<br/>prueba con el ID<br/>falla por la razón esperada"]
-    ROJO --> VERDE["Verde<br/>el mínimo código<br/>en una función pura"]
-    VERDE --> LIMPIA["Limpieza<br/>con todo en verde"]
-    LIMPIA -->|"siguiente criterio"| ROJO
-    LIMPIA --> CHECK["npm run check<br/>tipos, pruebas,<br/>arquitectura, trazabilidad"]
-    CHECK --> QA["Agente qa<br/>veredicto con evidencia"]
+    CU["Use case<br/>docs/casos-de-uso/<br/>criteria CU-NN.M"] --> ROJO["Red<br/>test named with the ID<br/>fails for the expected reason"]
+    ROJO --> VERDE["Green<br/>the minimum code<br/>in a pure function"]
+    VERDE --> LIMPIA["Cleanup<br/>with everything green"]
+    LIMPIA -->|"next criterion"| ROJO
+    LIMPIA --> CHECK["npm run check<br/>types, tests,<br/>architecture, traceability"]
+    CHECK --> QA["qa agent<br/>verdict with evidence"]
     style ROJO fill:#b3412e,color:#fff,stroke:#b3412e
     style VERDE fill:#2e7d4f,color:#fff,stroke:#2e7d4f
     style CHECK fill:#d9641e,color:#fff,stroke:#d9641e
 ```
 
-| Pieza | Dónde | Qué aporta |
+| Piece | Where | What it adds |
 |---|---|---|
-| Casos de uso | [`docs/casos-de-uso/`](docs/casos-de-uso/README.md) | Qué tiene que lograr la persona, con criterios "Dado, cuando, entonces" numerados |
-| Pruebas por criterio | `tests/unit/app/<modulo>.test.js` | El nombre de cada prueba empieza con el ID del criterio que cubre |
-| Trazabilidad | `npm run trazabilidad` | Cada criterio contra sus pruebas. `casos-de-uso.test.js` falla si alguno queda sin prueba |
-| Reglas verificables | `tests/unit/arquitectura.test.js` | Falla si `app/` importa un paquete, usa `innerHTML` o un módulo con lógica no tiene pruebas |
-| Quién implementa | agente `frontend` | En el harness, con `spawn_agent`; en Claude Code, con `.claude/agents/frontend.md` |
-| Quién revisa | agente `qa` | Corre el check y la trazabilidad, compara el código con las decisiones y el README con los archivos |
+| Use cases | [`docs/casos-de-uso/`](docs/casos-de-uso/README.md) | What the person must be able to do, with numbered "Given, when, then" criteria |
+| Tests per criterion | `tests/unit/app/<module>.test.js` | Each test name starts with the id of the criterion it covers |
+| Traceability | `npm run trazabilidad` | Each criterion against its tests. `casos-de-uso.test.js` fails if one has none |
+| Checkable rules | `tests/unit/arquitectura.test.js` | Fails if `app/` imports a package, uses `innerHTML`, or a module with logic has no tests |
+| Who implements | `frontend` agent | In the harness, with `spawn_agent`; in Claude Code, with `.claude/agents/frontend.md` |
+| Who reviews | `qa` agent | Runs the check and the traceability, and compares the code with the decisions and the README with the files |
 
-Los cuatro casos de uso del chat (conversar, elegir modelo, inspeccionar el contexto, empezar de nuevo) tienen 24 criterios: 22 cubiertos por pruebas y 2 que se verifican mirando la pantalla.
+The four chat use cases (talk, pick a model, inspect the context, start over) have 24 criteria: 22 covered by tests and 2 checked by looking at the screen.
 
 ---
 
-## 9. Instalación y uso
+## 9. Install and use
 
 ```bash
 git clone https://github.com/ada-school/ada-harness.git
 cd ada-harness
-cp .env.example .env          # pon tu clave de Claude o de Gemini, o ninguna si usas Ollama
-npm start                     # http://localhost:3000  (no hace falta npm install)
+cp .env.example .env          # put a Claude or Gemini key, or none if you use Ollama
+npm install
+npm start                     # http://localhost:3000
 ```
 
-El mismo comando abre el chat, corre un turno o mide las capas. `npm start` es `ada serve`.
+The same command opens the chat, runs one turn, or measures the layers. `npm start` is `ada serve`.
 
 ```bash
-npm run cli -- "Lista los archivos del workspace y dime qué hay"
-npm run cli -- --gemini "Lo mismo, pero con Gemini"
-npm run cli -- --ollama --model=qwen3:8b "Lo mismo, local y gratis"
+npm run cli -- "List the files in the workspace and tell me what is there"
+npm run cli -- --gemini "The same, with Gemini"
+npm run cli -- --ollama --model=qwen3:8b "The same, local and free"
 node bin/ada.js --help
 ```
 
-`node src/server.js` y `node src/harness.js "mensaje"` siguen funcionando: los dos leen los argumentos en `src/cli.js`. Después de `npm install` (solo hace falta para los tipos), `npx ada` abre el chat en este repo. No uses `npx ada-harness` contra el registro: el paquete no está publicado.
+`npm start` builds `dist/` and opens the chat. `npx ada` opens the chat in this repo only after that build. Do not use `npx ada-harness` against the registry: the package is not published.
 
-¿Cuánto pesa el contexto antes de escribir nada? `npm run capas` lo mide sin llamar a ningún modelo:
+How much does the context weigh before you write anything? `npm run capas` measures it without calling a model:
 
 ```
-  system              223
-  projectGuide        399
-  skillsIndex         136
-  memoryCore          110
+  system              214
+  projectGuide        362
+  skillsIndex         126
+  memoryCore          122
   memoryIndex           7
-  toolDefinitions     750
-  total              1625
+  toolDefinitions     897
+  total              1728
 ```
 
-Variables en `.env`:
+Variables in `.env`:
 
-| Variable | Default | Para qué |
+| Variable | Default | For |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | (vacía) | Clave de Claude |
-| `GEMINI_API_KEY` | (vacía) | Clave de Gemini. También acepta `GOOGLE_API_KEY` |
-| `ADA_PROVIDER` | el primero listo | `anthropic`, `gemini` u `ollama` |
-| `ADA_ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Agente principal con Claude. `ADA_MODEL` sigue funcionando |
-| `ADA_ANTHROPIC_FAST_MODEL` | `claude-haiku-5-5` | Subagentes y compactación con Claude |
-| `ADA_GEMINI_MODEL` | `gemini-3.8-flash` | Agente principal con Gemini |
-| `ADA_GEMINI_FAST_MODEL` | `gemini-3.5-flash-lite` | Subagentes y compactación con Gemini |
-| `OLLAMA_HOST` | `http://localhost:11434` | Dónde buscar Ollama |
-| `ADA_OLLAMA_MODEL` | el primero local con herramientas | Modelo fijo de Ollama |
-| `ADA_OLLAMA_FAST_MODEL` | el mismo modelo | Subagentes con Ollama. Otro modelo implica más memoria |
-| `ADA_OLLAMA_NUM_CTX` | `16384` | Ventana que se le pide a Ollama. Mínimo 8.192 |
-| `ADA_WORKSPACE` | `workspace/` | Carpeta donde el agente lee, escribe y ejecuta. Apúntala a un proyecto real para trabajar sobre él |
-| `ADA_MEMORY` | `harness/memory/` | Carpeta de memoria del agente. Las pruebas la apuntan a una temporal |
-| `PORT` | `3000` | Puerto del servidor |
-| `ADA_HOST` | `127.0.0.1` | Dónde escucha el servidor. Solo esta máquina por defecto; ábrelo a tu red únicamente a propósito |
+| `ANTHROPIC_API_KEY` | (empty) | Claude key |
+| `GEMINI_API_KEY` | (empty) | Gemini key. `GOOGLE_API_KEY` is also accepted |
+| `ADA_PROVIDER` | the first one ready | `anthropic`, `gemini`, or `ollama` |
+| `ADA_ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Main agent with Claude. `ADA_MODEL` still works |
+| `ADA_ANTHROPIC_FAST_MODEL` | `claude-haiku-5-5` | Subagents and compaction with Claude |
+| `ADA_GEMINI_MODEL` | `gemini-3.8-flash` | Main agent with Gemini |
+| `ADA_GEMINI_FAST_MODEL` | `gemini-3.5-flash-lite` | Subagents and compaction with Gemini |
+| `OLLAMA_HOST` | `http://localhost:11434` | Where to look for Ollama |
+| `ADA_OLLAMA_MODEL` | the first local model with tools | Fixed Ollama model |
+| `ADA_OLLAMA_FAST_MODEL` | the same model | Subagents with Ollama. Another model means more memory |
+| `ADA_OLLAMA_NUM_CTX` | `16384` | Window requested from Ollama. Minimum 8,192 |
+| `ADA_WORKSPACE` | `workspace/` | Folder where the agent reads, writes, and runs. Point it at a real project to work on that project |
+| `ADA_MEMORY` | `harness/memory/` | The agent's memory folder. Tests point it at a temporary one |
+| `ADA_SESSIONS` | `.sessions/` | Chat history on disk. Tests point it at a temporary folder |
+| `PORT` | `3000` | Server port |
+| `ADA_HOST` | `127.0.0.1` | Where the server listens. This machine only, by default. Open it to your network only on purpose |
+| `ADA_LANG` | `en` | `es` selects the Spanish error sentences. Any other value is English |
 
-Necesitas una clave o un Ollama corriendo con al menos un modelo que use herramientas.
+You need a key, or Ollama running with at least one model that uses tools.
 
-Rutas del servidor:
+Server routes:
 
-| Ruta | Método | Qué hace |
+| Route | Method | What it does |
 |---|---|---|
-| `/` | GET | El chat |
-| `/docs/Anatomía de un Agente.html` | GET | El explicador |
-| `/api/providers` | GET | Proveedores, su modelo, si tienen clave, y Ollama con sus modelos detectados |
-| `/api/chat` | POST `{session, message, provider, model}` | Un turno completo. Devuelve `{text, trace, reset}` |
-| `/api/reset` | POST | Borra todas las sesiones |
+| `/` | GET | The chat |
+| `/docs/Anatomía de un Agente.html` | GET | The explainer |
+| `/api/providers` | GET | Providers, their model, whether they have a key, and Ollama with the models it detected |
+| `/api/chat` | POST `{session, message, provider, model}` | One turn. Without `Accept`, returns `{text, trace, reset}`. With `Accept: text/event-stream`, sends the text in pieces and then that same object ([0012](docs/decisiones/0012-respuesta-en-trozos.md)) |
+| `/api/reset` | POST | Clears every session |
 
-La API solo atiende al propio chat: el servidor escucha en `127.0.0.1`, y un POST necesita `application/json` y un `Origin` propio (o ninguno, como `curl`). Otra página abierta en tu navegador no puede usarla ([decisión 0006](docs/decisiones/0006-sandbox-y-archivos-protegidos.md)).
+The API only serves the chat itself: the server listens on `127.0.0.1`, and a POST needs `application/json` and an `Origin` of its own (or none, as with `curl`). Another page open in your browser cannot use it ([decision 0006](docs/decisiones/0006-sandbox-y-archivos-protegidos.md)).
 
-### Pruebas y tipos
+### Tests and types
 
-Correr el harness no necesita instalar nada. Para revisar tipos sí: `npm install` trae TypeScript, solo como herramienta de desarrollo. El código sigue siendo JavaScript; los tipos viven en comentarios JSDoc (`src/types.js`).
+`npm install` brings TypeScript, a development tool, and `npm run build` writes `dist/`. That is what Node runs. Shared types live in `src/types.ts` and export no runtime value. The engine sources are the `.ts` files under `src/` and `harness/tools/`. `app/`, the tests, and `bin/ada.js` stay JavaScript. `bin/ada.js` imports `dist/`.
 
 ```bash
-npm test                      # las 114 pruebas: unit, providers e integration
-npm run test:unit             # una capa
-npm run trazabilidad          # cada criterio de los casos de uso contra sus pruebas
-npm run typecheck             # tipos con TypeScript, sin compilar
-npm run check                 # tipos + pruebas: córrelo antes de un commit
+npm test                      # 126 tests: unit, providers, and integration
+npm run test:unit             # one layer
+npm run trazabilidad          # each use-case criterion against its tests
+npm run typecheck             # types. The build writes dist/ first
+npm run check                 # types plus tests: run it before a commit
 ```
 
 ```mermaid
 flowchart LR
-    U["unit · 87<br/>lógica pura, arquitectura,<br/>trazabilidad, milisegundos"] --> P["providers · 18<br/>APIs simuladas, Ollama falso"] --> I["integration · 9<br/>servidor real de punta a punta"]
+    U["unit · 95<br/>pure logic, architecture,<br/>traceability, milliseconds"] --> P["providers · 20<br/>simulated APIs, fake Ollama"] --> I["integration · 11<br/>real server, end to end"]
 ```
 
-Ninguna prueba usa claves ni sale a internet: Claude y Gemini se simulan con `fakeFetch`, Ollama con un servidor que imita `/api/tags`, `/api/show` y `/api/chat`, y cada prueba trabaja en un workspace y una memoria temporales (`ADA_WORKSPACE`, `ADA_MEMORY`): correrlas no deja rastro en el repo. GitHub Actions corre tipos y pruebas en Node 18, 20 y 22 en cada push (`.github/workflows/ci.yml`).
+No test uses keys or reaches the internet. Claude and Gemini are simulated with `fakeFetch`, Ollama with a server that imitates `/api/tags`, `/api/show`, and `/api/chat`, and each test works in a temporary workspace and memory (`ADA_WORKSPACE`, `ADA_MEMORY`): running them leaves no trace in the repo. GitHub Actions runs types and tests on Node 18, 20, and 22 on every push (`.github/workflows/ci.yml`).
 
-Dos archivos de `tests/unit/` no prueban funciones sino reglas del proyecto. `arquitectura.test.js` verifica las decisiones que se pueden verificar (sin paquetes en el chat, sin `innerHTML`, un archivo de pruebas por módulo con lógica) y `casos-de-uso.test.js` verifica que cada criterio tenga su prueba. Si uno de ellos falla, no lo ajustes para que pase: lee la decisión que cita.
+Two files in `tests/unit/` do not test functions. They test project rules. `arquitectura.test.js` checks the decisions that can be checked (no packages in the chat, no `innerHTML`, one test file per module with logic) and `casos-de-uso.test.js` checks that every criterion has its test. If one of them fails, do not edit it so it passes: read the decision it cites.
 
-Las pruebas que más importan son las de seguridad de `tests/unit/tools.test.js`: el agente no sale del workspace (tampoco con `../`, rutas absolutas o una carpeta hermana con el mismo prefijo), no lee ni escribe `.env` ni `.git` en ningún nivel, tampoco en el workspace, `write_memory` no escribe fuera de `areas/`, `web_fetch` no entra a la red interna y la API del servidor no atiende a otras páginas. Si cambias `inside()`, `resolveReadable()`, `urlPublica()` o `peticionPermitida()`, esas pruebas te dicen si abriste un hueco.
+The tests that matter most are the security tests in `tests/unit/tools.test.js`: the agent does not leave the workspace (not with `../`, absolute paths, or a sibling folder with the same prefix), it does not read or write `.env` or `.git` at any level, including inside the workspace, `write_memory` does not write outside `areas/`, `web_fetch` does not enter the internal network, and the server API does not serve other pages. If you change `inside()`, `resolveReadable()`, `urlPublica()`, or `peticionPermitida()`, those tests tell you whether you opened a hole.
 
 ---
 
-## 10. Adaptarlo a tu proyecto
+## 10. Point it at your project
 
-En orden de impacto por minuto invertido:
+The harness is not the software. The software is the `ADA_WORKSPACE` folder.
 
-1. **`AGENTS.md`.** Stack, comandos, convenciones, qué no tocar. Es la capa más barata y la más efectiva. Una regla aquí vale más que repetirla en cada mensaje.
-2. **`harness/memory/profile.md` y `preferences.md`.** Escríbelos a mano la primera vez. El agente solo escribe en `areas/`.
-3. **Skills.** Un skill es un procedimiento, no una enciclopedia. La `description` del frontmatter es la condición de disparo: escríbela como "cárgalo cuando…". Si pasa de 200 líneas, divídelo.
-4. **Herramientas.** Registra una nueva en `harness/tools/index.js`: un objeto con `definition` (JSON que el modelo ve) y `run` (función). El esquema tiene que caber en `src/validation.js` (`additionalProperties: false`). Mantén las rutas dentro de `workspace/` con `inside()` y agrega su prueba en `tests/unit/tools.test.js`.
-5. **Subagentes.** Agrega `harness/agents/<nombre>.md` con frontmatter (`name` y una `description` de una línea) y su entrada en `routing.json`: herramientas, tope de iteraciones y modelo. `spawn_agent` lo ofrece solo.
-6. **`routing.json`.** Ajusta presupuesto y umbrales según el modelo y el tipo de trabajo. Trabajo largo con muchos archivos: baja `offloadAbove`; conversación corta: sube `compactAt`.
-7. **Decisiones y casos de uso.** Cuando tomes una decisión que alguien podría cuestionar, escríbela en `docs/decisiones/` con la prueba que la verifica. Cuando tu proyecto tenga pantallas, escribe sus casos de uso y deja que el agente `frontend` siga el ciclo de pruebas primero.
+```bash
+# in .env, absolute path of the repo you want to build
+ADA_WORKSPACE=/path/to/your/repo
+```
 
-¿Otro modelo? Agrega un proveedor en `src/providers/` (ver [Agregar otro proveedor](#agregar-otro-proveedor)). El resto del harness no cambia.
+There the agent reads, writes, and runs commands. That repo's `.env` and `.git` stay protected. Then, in order of impact per minute spent:
+
+1. **`AGENTS.md`.** Stack, commands, conventions, what not to touch. It is the cheapest layer and the most effective. One rule here is worth more than repeating it in every message.
+2. **`harness/memory/profile.md` and `preferences.md`.** Write them by hand the first time. The agent only writes in `areas/`.
+3. **Skills.** A skill is a procedure, not an encyclopedia. The frontmatter `description` is the trigger: write it as "load this when…". If it passes 200 lines, split it.
+4. **Tools.** Register a new one in `harness/tools/index.ts`: an object with `definition` (JSON the model sees) and `run` (function). The schema has to fit `src/validation.ts` (`additionalProperties: false`). Keep paths inside `ADA_WORKSPACE` with `inside()` and add the test in `tests/unit/tools.test.js`.
+5. **Subagents.** Add `harness/agents/<name>.md` with frontmatter (`name` and a one-line `description`) and its entry in `routing.json`: tools, iteration cap, and model. `spawn_agent` offers it on its own.
+6. **`routing.json`.** Adjust the budget and thresholds for the model and the kind of work. Long work with many files: lower `offloadAbove`. Short conversation: raise `compactAt`.
+7. **Decisions and use cases.** When you make a decision someone might question, write it in `docs/decisiones/` with the test that checks it. When your project has screens, write their use cases and let the `frontend` agent follow the tests-first cycle.
+
+Another model? Add a provider in `src/providers/` (see [Add another provider](#add-another-provider)). The rest of the harness does not change.
 
 ```mermaid
 flowchart LR
-    P1["Paso 1<br/>AGENTS.md"] --> P2["Paso 2<br/>memoria base"] --> P3["Paso 3<br/>skills"] --> P4["Paso 4<br/>herramientas"] --> P5["Paso 5<br/>subagentes"] --> P6["Paso 6<br/>routing.json"] --> P7["Paso 7<br/>decisiones y<br/>casos de uso"]
+    P1["Step 1<br/>AGENTS.md"] --> P2["Step 2<br/>base memory"] --> P3["Step 3<br/>skills"] --> P4["Step 4<br/>tools"] --> P5["Step 5<br/>subagents"] --> P6["Step 6<br/>routing.json"] --> P7["Step 7<br/>decisions and<br/>use cases"]
 ```
 
 ---
 
-## 11. Principios que esta estructura hace cumplir
+## 11. Principles this structure enforces
 
-| Principio | Dónde vive en el código |
+| Principle | Where it lives in the code |
 |---|---|
-| **Índice adentro, contenido afuera.** Skills, memoria y resultados grandes se listan en el contexto y se cargan completos solo cuando hace falta. | `context.js` (índices), `load_skill`, `read_memory`, `window.js` → `maybeOffload()` |
-| **El contexto enfoca, no enseña.** Si el modelo necesita algo que no sabe, una herramienta lo trae como texto. | `tools/index.js` |
-| **Degradación antes del límite.** Compactar al 80%, no al 100%. | `routing.json` → `compactAt`, `window.js` → `compact()` |
-| **Aislar lo ruidoso.** Investigación, revisión, implementación de pantallas y QA en subagentes, cada uno con su contexto. | `spawnAgent()`, `agents/`, `routing.json` → `agents` |
-| **Todo es texto.** Cada capa es un archivo. Si no puedes leerlo, no está en el harness. | `harness/` entero |
-| **El modelo propone, el harness ejecuta.** Nada corre sin pasar por una función registrada, un esquema válido y una carpeta permitida. | `runAgent()`, `validateInput()`, `inside()` |
-| **Los secretos no son contexto.** El agente no puede leer `.env` ni `.git`, ni siquiera desde la raíz del repo. | `config.js` → `isProtected()`, `resolveReadable()` |
-| **Lo que decide es puro; lo que toca el mundo, delgado.** Las reglas se prueban sin red, sin modelo y sin navegador. | `window.js`, `app/js/*`, `tests/` |
-| **El modelo es intercambiable.** El loop habla un formato interno; cada proveedor traduce de ida y de vuelta. | `src/providers/` |
-| **Primero el criterio, después la prueba, al final el código.** Una pantalla está lista cuando cada criterio de su caso de uso tiene una prueba que lo nombra. | `docs/casos-de-uso/`, skill `frontend-tdd`, `casos-de-uso.test.js` |
-| **Una decisión que no se verifica es una sugerencia.** Cada decisión de arquitectura dice qué prueba falla si alguien la rompe. | `docs/decisiones/`, `arquitectura.test.js` |
+| **Index in, body out.** Skills, memory, and large results are listed in context and loaded in full only when needed. | `context.ts` (indexes), `load_skill`, `read_memory`, `window.ts` → `maybeOffload()` |
+| **Context focuses, it does not teach.** If the model needs something it does not know, a tool brings it in as text. | `tools/index.ts` |
+| **Degrade before the limit.** Compact at 80%, not at 100%. | `routing.json` → `compactAt`, `window.ts` → `compact()` |
+| **Isolate the noisy work.** Research, review, screen implementation, and QA in subagents, each with its own context. | `spawnAgent()`, `agents/`, `routing.json` → `agents` |
+| **Everything is text.** Each layer is a file. If you cannot read it, it is not in the harness. | all of `harness/` |
+| **The model proposes, the harness runs.** Nothing runs without a registered function, a valid schema, and an allowed folder. | `runAgent()`, `validateInput()`, `inside()` |
+| **Secrets are not context.** The agent cannot read `.env` or `.git`, not even from the repo root. | `config.ts` → `isProtected()`, `resolveReadable()` |
+| **What decides is pure. What touches the world is thin.** Rules are tested with no network, no model, and no browser. | `window.ts`, `app/js/*`, `tests/` |
+| **The model is replaceable.** The loop speaks an internal format. Each provider translates both ways. | `src/providers/` |
+| **Criterion first, then the test, then the code.** A screen is done when every criterion of its use case has a test that names it. | `docs/casos-de-uso/`, `frontend-tdd` skill, `casos-de-uso.test.js` |
+| **A decision that is not checked is a suggestion.** Each architecture decision says which test fails if someone breaks it. | `docs/decisiones/`, `arquitectura.test.js` |
 
-### Decisiones de arquitectura
+### Architecture decisions
 
-El porqué de cada pieza está en [`docs/decisiones/`](docs/decisiones/README.md), una decisión por archivo:
+The reason for each piece is in [`docs/decisiones/`](docs/decisiones/README.md), one decision per file:
 
-| # | Decisión | Se verifica en |
+| # | Decision | Checked in |
 |---|---|---|
-| [0001](docs/decisiones/0001-interfaz-sin-compilacion.md) | El chat sigue sin paso de compilación | `arquitectura.test.js` |
-| [0002](docs/decisiones/0002-formato-interno-y-proveedores.md) | Un formato interno de mensajes y un adaptador por proveedor | `tests/providers/` |
-| [0003](docs/decisiones/0003-vista-pura-render-delgado.md) | En el chat, la lógica es pura y el render no decide | `arquitectura.test.js`, `tests/unit/app/` |
-| [0004](docs/decisiones/0004-tipos-con-jsdoc.md) | Tipos en JSDoc revisados por TypeScript, sin compilar | `npm run typecheck` |
-| [0005](docs/decisiones/0005-pruebas-sin-red.md) | Pruebas en tres capas, sin claves ni red | `tests/run.js`, CI |
-| [0006](docs/decisiones/0006-sandbox-y-archivos-protegidos.md) | Las herramientas no salen del workspace ni tocan secretos | `tools.test.js` |
-| [0007](docs/decisiones/0007-casos-de-uso-y-tdd.md) | El front end se construye con casos de uso y pruebas primero | `casos-de-uso.test.js` |
-| [0008](docs/decisiones/0008-agentes-por-archivo.md) | Un agente es un archivo y una entrada en routing.json | `agentes.test.js` |
-| [0009](docs/decisiones/0009-validacion-de-herramientas.md) | El servidor valida los argumentos de cada herramienta | `validation.test.js`, `harness.test.js` |
-| [0010](docs/decisiones/0010-comando-unico.md) | Un comando para el chat y para la terminal | `http-cli.test.js`, `arquitectura.test.js` |
+| [0001](docs/decisiones/0001-interfaz-sin-compilacion.md) | The chat stays without a build step | `arquitectura.test.js` |
+| [0002](docs/decisiones/0002-formato-interno-y-proveedores.md) | One internal message format and one adapter per provider | `tests/providers/` |
+| [0003](docs/decisiones/0003-vista-pura-render-delgado.md) | In the chat, logic is pure and render does not decide | `arquitectura.test.js`, `tests/unit/app/` |
+| [0004](docs/decisiones/0004-tipos-con-jsdoc.md) | Types in JSDoc, checked by TypeScript, with no compile step | `npm run typecheck` |
+| [0005](docs/decisiones/0005-pruebas-sin-red.md) | Tests in three layers, with no keys and no network | `tests/run.js`, CI |
+| [0006](docs/decisiones/0006-sandbox-y-archivos-protegidos.md) | Tools do not leave the workspace and do not touch secrets | `tools.test.js` |
+| [0007](docs/decisiones/0007-casos-de-uso-y-tdd.md) | The front end is built with use cases and tests first | `casos-de-uso.test.js` |
+| [0008](docs/decisiones/0008-agentes-por-archivo.md) | An agent is a file and an entry in routing.json | `agentes.test.js` |
+| [0009](docs/decisiones/0009-validacion-de-herramientas.md) | The server validates each tool's arguments | `validation.test.js`, `harness.test.js` |
+| [0010](docs/decisiones/0010-comando-unico.md) | One command for the chat and the terminal | `http-cli.test.js`, `arquitectura.test.js` |
+| [0011](docs/decisiones/0011-ingles-typescript-y-librerias.md) | English, TypeScript in phases, and no React for the chat | `docs/BACKLOG.md`, phase by phase |
 
 ---
 
-## 12. Límites conocidos
+## 12. Known limits
 
-- **Estimación de tokens.** 4 caracteres por token es una aproximación. Para cifras exactas antes de llamar, usa el endpoint `count_tokens` de la API.
-- **Sin sandbox real.** `run_command` corre dentro de `workspace/` con timeout y sin shell, pero no es un contenedor: un programa que el agente ejecute puede leer lo que tu usuario lee, `.env` incluido. La protección de secretos cubre `read_file`, `list_dir` y `write_file`. Bien para uso local, no para multiusuario.
-- **Sin streaming.** Cada turno devuelve la respuesta completa. Agregar SSE es el siguiente paso natural.
-- **Historial en memoria.** Se pierde al reiniciar el servidor.
-- **Interfaz sin framework.** El chat son siete módulos chicos y alcanza. Si crece a muchas pantallas, ver cuándo conviene agregar uno en [`docs/decisiones/0001-interfaz-sin-compilacion.md`](docs/decisiones/0001-interfaz-sin-compilacion.md). Lo que sí quedó unificado es el arranque: chat y terminal salen de `bin/ada.js` ([decisión 0010](docs/decisiones/0010-comando-unico.md)). Qué sigue, y qué librerías no entran, está en [`docs/BACKLOG.md`](docs/BACKLOG.md).
-- **Los agentes frontend y qa piden un modelo capaz.** Por eso usan el modelo principal. Con un modelo local de 8B, el ciclo de pruebas primero suele perderse a mitad de camino: para ese trabajo, usa Claude o Gemini.
-- **Un modelo por conversación.** Cambiar de modelo o de proveedor empieza una conversación nueva, porque las firmas y los ids de una API no sirven en otra, y un historial escrito por un modelo confunde al siguiente.
-- **Modelos locales más limitados.** Un modelo de 8B en Ollama elige peor las herramientas y se pierde antes en tareas largas. Y su ventana real (16k por defecto) se llena mucho más rápido: la compactación aparece en conversaciones cortas.
-- **Gemini sin opciones avanzadas.** El adaptador usa `generateContent` con el nivel de razonamiento por defecto del modelo, sin streaming ni caché. Las pruebas simulan la API con el formato documentado: antes de un taller, haz un turno real con tu clave.
-- **Sin caché de prompt.** La API permite cachear el bloque de sistema y las herramientas para abaratar llamadas repetidas. No cambia el tamaño de la ventana, solo el costo.
+- **Token estimate.** 4 characters per token is what decides compaction, before the call. After the call, the inspector shows the API's input and output counts beside that estimate. There is no separate `count_tokens` request.
+- **Sandbox is macOS only.** `run_command` still has no shell and a 60-second limit. On macOS it runs under Seatbelt: it can read and write the workspace, and it can read system libraries and its own install prefix. It cannot read the home directory, so a `.env` outside the workspace stays closed, and it cannot write outside the workspace. On Linux it is still the workspace directory and the timeout. It is not a container ([decision 0006](docs/decisiones/0006-sandbox-y-archivos-protegidos.md)).
+- **Streaming is partial.** Ollama sends text as it arrives. Claude and Gemini still send the finished reply as one piece.
+- **The screen starts empty after a reload.** The model still has the turns. The page does not redraw them.
+- **No UI framework.** The chat is seven small modules and that is enough. React stays out: one screen does not justify it ([decision 0011](docs/decisiones/0011-ingles-typescript-y-librerias.md)). Chat and terminal start from `bin/ada.js` ([decision 0010](docs/decisiones/0010-comando-unico.md)). The move to English and TypeScript is in [`docs/BACKLOG.md`](docs/BACKLOG.md).
+- **The frontend and qa agents need a capable model.** That is why they use the main model. With a local 8B model, the tests-first cycle usually gets lost halfway. For that work, use Claude or Gemini.
+- **One model per conversation.** Switching model or provider starts a new conversation, because one API's signatures and ids do not work on another, and a history written by one model confuses the next.
+- **Local models are more limited.** An 8B model on Ollama picks tools worse and loses the thread sooner on long tasks. And its real window (16k by default) fills much faster: compaction shows up in short conversations.
+- **Gemini without advanced options.** The adapter uses `generateContent` at the model's default reasoning level, with no streaming and no cache. Tests simulate the API with the documented format: before a workshop, do one real turn with your key.
+- **No prompt cache.** The API can cache the system block and the tools to make repeated calls cheaper. It does not change the window size, only the cost.
 
 ---
 
-## Desarrollar este repo con Claude Code
+## Developing this repo with Claude Code
 
-Este repo tiene dos guías porque tiene dos agentes distintos trabajando en él:
+This repo has two guides because two different agents work in it:
 
 | | `AGENTS.md` | `CLAUDE.md` |
 |---|---|---|
-| Quién la lee | El agente que corre dentro del harness | Claude Code, cuando desarrollas el harness |
-| Dónde trabaja ese agente | `workspace/` | El repo entero |
-| Cuándo se carga | Concatenada al system prompt, en cada llamada | Al abrir Claude Code en esta carpeta. Si hay CLAUDE.md, Claude Code no carga AGENTS.md |
+| Who reads it | The agent that runs inside the harness | Claude Code, when you develop the harness |
+| Where that agent works | `workspace/` | The whole repo |
+| When it loads | Concatenated to the system prompt, on every call | When Claude Code opens this folder. If `CLAUDE.md` exists, Claude Code does not load `AGENTS.md` |
 
-`.claude/` completa la guía para Claude Code:
+`.claude/` completes the guide for Claude Code:
 
-- **`.claude/agents/frontend.md` y `qa.md`.** Los mismos agentes del harness, disponibles para Claude Code. Son envoltorios de pocas líneas: el prompt vive en `harness/agents/`, en un solo lugar, y los dos harnesses lo leen.
-- **`.claude/rules/frontend.md`.** Se carga sola cuando Claude Code abre un archivo de `app/`, `tests/unit/app/` o `docs/casos-de-uso/`, y le pone delante el proceso y las reglas del front end.
+- **`.claude/agents/frontend.md` and `qa.md`.** The same harness agents, available to Claude Code. They are wrappers of a few lines: the prompt lives in `harness/agents/`, in one place, and both harnesses read it.
+- **`.claude/rules/frontend.md`.** Loads on its own when Claude Code opens a file in `app/`, `tests/unit/app/`, or `docs/casos-de-uso/`, and puts the front-end process and rules in front of it.
 
 ```mermaid
 flowchart LR
-    subgraph UNO["Un solo prompt por rol"]
+    subgraph UNO["One prompt per role"]
         F["harness/agents/frontend.md"]
         Q["harness/agents/qa.md"]
     end
-    H["Agente del harness<br/>spawn_agent(frontend | qa)"] --> F
+    H["Harness agent<br/>spawn_agent(frontend or qa)"] --> F
     H --> Q
-    C["Claude Code<br/>.claude/agents/frontend | qa"] --> F
+    C["Claude Code<br/>.claude/agents/frontend or qa"] --> F
     C --> Q
     style UNO fill:#fdf1e8,stroke:#d9641e
 ```
 
-Un pedido típico en Claude Code: "Agrega un botón para copiar la última respuesta. Usa el agente frontend y después revisa con qa." El agente `frontend` escribe el caso de uso, la prueba en rojo y el código mínimo, y corre `npm run check`. El agente `qa` devuelve un veredicto con evidencia.
+A typical request in Claude Code: "Add a button to copy the last reply. Use the frontend agent, then review with qa." The `frontend` agent writes the use case, the failing test, and the minimum code, and runs `npm run check`. The `qa` agent returns a verdict with evidence.
 
 ---
 
-## Taller presencial
+## In-person workshop
 
-`docs/taller/` tiene todo lo del taller "Abre un agente por dentro" (45 minutos): los pasos de preparación, la plantilla de tu primer skill, el ejemplo resuelto y el código de la demo. Empieza por [`docs/taller/README.md`](docs/taller/README.md).
+`docs/taller/` has everything for the workshop "Open an agent from the inside" (45 minutes): the preparation steps, the template for your first skill, the solved example, and the demo code. Start at [`docs/taller/README.md`](docs/taller/README.md).
 
 ---
 
-## Referencias
+## References
 
-- Explicador interactivo: [`docs/Anatomía de un Agente.html`](docs/Anatom%C3%ADa%20de%20un%20Agente.html)
-- API de mensajes y manejo de `stop_reason`: https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons
-- Gemini, llamadas a funciones: https://ai.google.dev/gemini-api/docs/generate-content/function-calling
-- Gemini, firmas de pensamiento: https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures
-- Ollama, llamadas a herramientas y longitud de contexto: https://github.com/ollama/ollama/tree/main/docs
+- Interactive explainer: [`docs/Anatomía de un Agente.html`](docs/Anatom%C3%ADa%20de%20un%20Agente.html)
+- Messages API and `stop_reason` handling: https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons
+- Gemini, function calls: https://ai.google.dev/gemini-api/docs/generate-content/function-calling
+- Gemini, thought signatures: https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures
+- Ollama, tool calls and context length: https://github.com/ollama/ollama/tree/main/docs
 
-## Licencia
+## License
 
-MIT. Úsalo, cópialo, mejóralo.
+MIT. Use it, copy it, improve it.

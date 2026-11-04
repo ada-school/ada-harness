@@ -1,24 +1,24 @@
-# CU-NN Lo que la persona logra, con un verbo
+# CU-NN What the person can do, with a verb
 
-**Actor:** quién usa la pantalla.
-**Objetivo:** lo que quiere conseguir, en una frase.
-**Precondiciones:** lo que tiene que ser cierto antes de empezar.
-**Disparador:** lo que hace la persona para empezar.
+**Actor:** who uses the screen.
+**Goal:** what they want to achieve, in one sentence.
+**Preconditions:** what has to be true before they start.
+**Trigger:** what the person does to start.
 
-## Flujo principal
+## Main flow
 
-1. La persona...
-2. El chat...
+1. The person...
+2. The chat...
 
-## Flujos alternos
+## Alternate flows
 
-- **Na.** Si..., entonces...
+- **Na.** If..., then...
 
-## Criterios de aceptación
+## Acceptance criteria
 
-- **CU-NN.1** Dado..., cuando..., entonces...
-- **CU-NN.2** (manual) Dado..., cuando..., entonces... Verificación: qué mirar y dónde.
+- **CU-NN.1** Given..., when..., then...
+- **CU-NN.2** (manual) Given..., when..., then... Verification: what to look at, and where.
 
-## Fuera de alcance
+## Out of scope
 
-- Lo que este caso no cubre, para que nadie lo construya por adelantado.
+- What this case does not cover, so nobody builds it ahead of time.

@@ -1,19 +1,23 @@
-// Adaptador para la API de Gemini (generateContent, REST, sin SDK).
+// Edit src/providers/gemini.ts. Node runs the compiled file under dist/. Rebuild with npm run build.
+// Adapter for the Gemini API (generateContent, REST, no SDK).
 //
-// El historial interno usa bloques al estilo Anthropic: text, tool_use, tool_result.
-// Este archivo traduce en los dos sentidos y respeta tres reglas de Gemini:
+// The internal history uses Anthropic-style blocks: text, tool_use, tool_result.
+// This file translates both ways and follows three Gemini rules:
 //
-// 1. Firmas de pensamiento. Gemini 3 y 4 adjuntan una thoughtSignature a ciertas partes
-//    (siempre a la primera functionCall de cada paso). Hay que devolverla intacta, en la misma
-//    parte, en la siguiente llamada; si falta en el turno actual, la API responde 400.
-//    La guardamos en el bloque como _gemini.thoughtSignature y la reponemos al traducir.
-// 2. Ids. Cada functionCall trae un id, y la functionResponse debe devolver el mismo id y el
-//    mismo name. Si un modelo viejo no manda id, generamos uno interno y no se lo enviamos.
-// 3. Fin del turno. Gemini termina con finishReason STOP aunque haya pedido herramientas.
-//    La señal real de tool_use es que existan partes functionCall en la respuesta.
+// 1. Thought signatures. Gemini 3 and 4 attach a thoughtSignature to certain parts
+//    (always to the first functionCall of each step). It must come back intact, on the same
+//    part, on the next call; if it is missing in the current turn, the API responds 400.
+//    We store it on the block as _gemini.thoughtSignature and put it back when translating.
+// 2. Ids. Each functionCall brings an id, and the functionResponse must return the same id and
+//    the same name. If an old model sends no id, we generate an internal one and do not send it.
+// 3. End of the turn. Gemini finishes with finishReason STOP even when it asked for tools.
+//    The real signal of tool_use is that the response contains functionCall parts.
 //
-// Referencias: ai.google.dev/gemini-api/docs/generate-content/function-calling
-//              ai.google.dev/gemini-api/docs/generate-content/thought-signatures
+// References: ai.google.dev/gemini-api/docs/generate-content/function-calling
+//             ai.google.dev/gemini-api/docs/generate-content/thought-signatures
+
+import type { Block, CallArgs, Message, ModelResponse, Provider, ToolDefinition } from "../types.js";
+import { text } from "../text.js";
 
 const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const clave = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
@@ -28,9 +32,9 @@ export const gemini = {
   fastModel: () => process.env.ADA_GEMINI_FAST_MODEL || "gemini-3.5-flash-lite",
   configured: () => Boolean(clave()),
 
-  async call({ model, system, messages, tools, maxTokens = 4096 }) {
+  async call({ model, system, messages, tools, maxTokens = 4096 }: CallArgs): Promise<ModelResponse> {
     const key = clave();
-    if (!key) throw new Error("Falta GEMINI_API_KEY en .env");
+    if (!key) throw new Error(text("missingKey", { name: "GEMINI_API_KEY" }));
     const body = {
       contents: haciaGemini(messages),
       ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
@@ -42,30 +46,30 @@ export const gemini = {
       headers: { "x-goog-api-key": key, "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
+    const data: any = await res.json();
     if (!res.ok) throw new Error(`Gemini: ${data?.error?.message || `HTTP ${res.status}`}`);
     return desdeGemini(data);
   },
-};
+} satisfies Provider;
 
-// Definición de herramienta del harness -> FunctionDeclaration de Gemini.
+// Harness tool definition -> Gemini FunctionDeclaration.
 /**
- * Definición interna -> functionDeclaration de Gemini. Nuestros input_schema usan el subconjunto
- * que Gemini acepta en "parameters": type, properties, required, enum, items, description.
+ * Internal definition -> Gemini functionDeclaration. Our input_schema values use the subset
+ * Gemini accepts in "parameters": type, properties, required, enum, items, description.
  * @param {import("../types.js").ToolDefinition} t
  */
-export function declaracion(t) {
+export function declaracion(t: ToolDefinition): { name: string; description: string; parameters: ToolDefinition["input_schema"] } {
   return { name: t.name, description: t.description, parameters: t.input_schema };
 }
 
 /**
- * Historial interno -> contents de Gemini, reponiendo ids y thoughtSignature guardados.
+ * Internal history -> Gemini contents, putting back the stored ids and thoughtSignature.
  * @param {import("../types.js").Message[]} messages
  * @returns {any[]}
  */
-export function haciaGemini(messages) {
-  // la functionResponse necesita el name de la llamada; lo buscamos por id
-  const nombres = new Map();
+export function haciaGemini(messages: Message[]): any[] {
+  // functionResponse needs the call's name; we look it up by id
+  const nombres = new Map<string, string>();
   for (const m of messages) {
     if (m.role === "assistant" && Array.isArray(m.content))
       for (const b of m.content) if (b.type === "tool_use") nombres.set(b.id, b.name);
@@ -73,10 +77,10 @@ export function haciaGemini(messages) {
   return messages.map((m) => {
     const role = m.role === "assistant" ? "model" : "user";
     if (typeof m.content === "string") return { role, parts: [{ text: m.content }] };
-    const parts = [];
+    const parts: any[] = [];
     for (const b of m.content) {
       const guardada = b.type === "tool_result" ? undefined : b._gemini?.thoughtSignature;
-      const firma = guardada ? { thoughtSignature: guardada } : {};
+      const firma: { thoughtSignature?: string } = guardada ? { thoughtSignature: guardada } : {};
       if (b.type === "text") {
         if (b.text || firma.thoughtSignature) parts.push({ text: b.text || "", ...firma });
       } else if (b.type === "tool_use") {
@@ -97,21 +101,20 @@ export function haciaGemini(messages) {
 }
 
 /**
- * Respuesta de Gemini -> formato interno.
- * @param {any} data lo que devuelve generateContent
+ * Gemini response -> internal format.
+ * @param {any} data what generateContent returns
  * @returns {import("../types.js").ModelResponse}
  */
-export function desdeGemini(data) {
+export function desdeGemini(data: any): ModelResponse {
   const cand = data.candidates?.[0];
   if (!cand) {
-    const motivo = data.promptFeedback?.blockReason || "sin candidatos";
-    throw new Error(`Gemini no respondió: ${motivo}`);
+    const motivo = data.promptFeedback?.blockReason || text("noCandidates");
+    throw new Error(text("geminiNoReply", { reason: motivo }));
   }
-  /** @type {import("../types.js").Block[]} */
-  const content = [];
+  const content: Block[] = [];
   for (const p of cand.content?.parts || []) {
     const guardado = p.thoughtSignature ? { _gemini: { thoughtSignature: p.thoughtSignature } } : {};
-    if (p.thought) continue;                     // resúmenes de pensamiento: no son respuesta
+    if (p.thought) continue;                     // thought summaries: not the reply
     if (p.functionCall) {
       const fc = p.functionCall;
       const idPropio = !fc.id;
@@ -131,7 +134,7 @@ export function desdeGemini(data) {
   const pidioHerramienta = content.some((b) => b.type === "tool_use");
   const fin = cand.finishReason;
   if (!pidioHerramienta && !content.some((b) => b.type === "text" && b.text) && fin && fin !== "STOP" && fin !== "MAX_TOKENS") {
-    throw new Error(`Gemini terminó con ${fin}${cand.finishMessage ? `: ${cand.finishMessage}` : ""}`);
+    throw new Error(text("geminiFinished", { reason: fin }) + (cand.finishMessage ? `: ${cand.finishMessage}` : ""));
   }
   const u = data.usageMetadata || {};
   return {

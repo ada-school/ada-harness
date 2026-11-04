@@ -1,11 +1,11 @@
-// La ventana de contexto: presupuesto, cuándo compactar y resultados grandes a disco.
+// The context window: budget, when to compact, and large results to disk.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { budgetFor, planCompaction, compact, maybeOffload } from "../../src/window.js";
-import { loadRouting } from "../../src/context.js";
+import { budgetFor, planCompaction, compact, maybeOffload } from "../../dist/src/window.js";
+import { loadRouting } from "../../dist/src/context.js";
 import { tempWorkspace } from "../helpers/workspace.js";
 
 /** @type {Awaited<ReturnType<typeof tempWorkspace>>} */
@@ -15,7 +15,7 @@ before(async () => { ws = await tempWorkspace(); routing = await loadRouting(); 
 after(async () => { await ws.cleanup(); });
 
 /**
- * Proveedor mínimo: devuelve siempre el mismo resumen.
+ * Minimal provider: always returns the same summary.
  * @param {Partial<import("../../src/types.js").Provider>} [extra]
  * @returns {import("../../src/types.js").Provider}
  */
@@ -56,7 +56,7 @@ test("compact: con pocos mensajes no hace nada", async () => {
 
 test("maybeOffload: lo chico pasa, lo grande va a .context del workspace", async () => {
   assert.equal(await maybeOffload("read_file", "corto", routing, 120000), "corto");
-  const grande = "x".repeat(30000);                                   // ~7.500 tokens, sobre 6.000
+  const grande = "x".repeat(30000);                                   // ~7,500 tokens, over 6,000
   const ref = await maybeOffload("read_file", grande, routing, 120000);
   const m = ref.match(/read_file\('(\.context\/read_file-\d+\.txt)'\)/);
   assert.ok(m, ref.slice(0, 120));
@@ -64,7 +64,7 @@ test("maybeOffload: lo chico pasa, lo grande va a .context del workspace", async
 });
 
 test("maybeOffload: con ventana chica, el umbral baja a un cuarto del presupuesto", async () => {
-  const mediano = "y".repeat(12000);                                   // ~3.000 tokens: bajo 6.000, sobre 8.192/4
+  const mediano = "y".repeat(12000);                                   // ~3,000 tokens: under 6,000, over 8,192/4
   assert.equal(await maybeOffload("read_file", mediano, routing, 120000), mediano);
   assert.match(await maybeOffload("read_file", mediano, routing, 8192), /^\[Resultado largo/);
 });

@@ -1,12 +1,14 @@
-// Piezas chicas de la capa de entrada: qué archivos sirve el servidor y cómo lee la terminal.
+// Small pieces of the entry layer: which files the server serves and how the terminal reads arguments.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { resolveStatic } from "../../src/http/static.js";
-import { createSessionStore, peticionPermitida } from "../../src/http/api.js";
-import { parseArgs, ayuda } from "../../src/cli.js";
-import { paths, listenHost } from "../../src/config.js";
+import { resolveStatic } from "../../dist/src/http/static.js";
+import { createSessionStore, peticionPermitida } from "../../dist/src/http/api.js";
+import { parseArgs, ayuda, main } from "../../dist/src/cli.js";
+import { paths, listenHost } from "../../dist/src/config.js";
 
 test("estáticos: el chat, sus módulos y la documentación", () => {
   assert.equal(resolveStatic("/"), path.join(paths.app, "index.html"));
@@ -21,7 +23,8 @@ test("estáticos: nada fuera de app/ y docs/, tampoco con ../ codificado", () =>
 });
 
 test("CU-02.6 sesiones: el historial sigue con el mismo modelo y se reinicia al cambiar de modelo o de proveedor", () => {
-  const s = createSessionStore();
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ada-sesiones-"));
+  const s = createSessionStore(dir);
   assert.deepEqual(s.get("a", "ollama|qwen3:8b"), { history: [], reset: false });
   s.set("a", "ollama|qwen3:8b", [{ role: "user", content: "hola" }]);
   assert.equal(s.get("a", "ollama|qwen3:8b").history.length, 1);
@@ -29,16 +32,34 @@ test("CU-02.6 sesiones: el historial sigue con el mismo modelo y se reinicia al 
   assert.deepEqual(s.get("a", "gemini|"), { history: [], reset: true });
   s.clear();
   assert.equal(s.size, 0);
+  rmSync(dir, { recursive: true, force: true });
 });
 
-/** Corre `fn` con ADA_HOST fijado, y lo deja como estaba. */
+test("sesiones: un proceso nuevo lee el historial que el anterior guardó", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ada-sesiones-"));
+  try {
+    const primero = createSessionStore(dir);
+    primero.set("a", "ollama|qwen3:8b", [{ role: "user", content: "hola" }]);
+    const segundo = createSessionStore(dir);
+    assert.equal(segundo.get("a", "ollama|qwen3:8b").history[0].content, "hola");
+    assert.equal(segundo.get("a", "ollama|llama3.1:8b").reset, true);
+    writeFileSync(path.join(dir, "sessions.json"), "no es json");
+    assert.equal(createSessionStore(dir).get("a", "ollama|qwen3:8b").history.length, 0);
+    segundo.clear();
+    assert.equal(createSessionStore(dir).size, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/** Runs `fn` with ADA_HOST set, then puts it back. */
 function conHost(/** @type {string | undefined} */ valor, /** @type {() => void} */ fn) {
   const antes = process.env.ADA_HOST;
   if (valor === undefined) delete process.env.ADA_HOST; else process.env.ADA_HOST = valor;
   try { fn(); } finally { if (antes === undefined) delete process.env.ADA_HOST; else process.env.ADA_HOST = antes; }
 }
 const pedido = (/** @type {string} */ method, /** @type {Record<string, string>} */ headers) => ({ method, headers });
-/** El estado del rechazo; 0 si el pedido fue aceptado. */
+/** The rejection status; 0 if the request was accepted. */
 const estado = (/** @type {ReturnType<typeof peticionPermitida>} */ r) => (r.ok ? 0 : r.estado);
 const json = { "content-type": "application/json" };
 
@@ -68,7 +89,7 @@ test("API: con ADA_HOST abierto a la red se acepta el nombre de la máquina, per
   assert.equal(estado(peticionPermitida(pedido("POST", { ...lan, ...json, origin: "https://sitio-cualquiera.example" }))), 403);
 }));
 
-/** Forma completa de parseArgs, para no repetir los campos vacíos. */
+/** The full parseArgs shape, so empty fields are not repeated. */
 function args(/** @type {Partial<ReturnType<typeof parseArgs>>} */ parcial) {
   return {
     command: "run", provider: undefined, model: undefined, message: "",
@@ -97,10 +118,37 @@ test("ADR 0010: el chat y el turno salen del mismo comando", () => {
   assert.deepEqual(parseArgs(["run", "--gemini", "hola"]), args({ provider: "gemini", message: "hola" }));
   assert.equal(parseArgs(["-h"]).help, true);
   assert.equal(parseArgs(["-v"]).version, true);
-  assert.match(parseArgs(["--no-existe"]).error || "", /desconocida/);
-  assert.match(parseArgs(["--ollama", "--gemini", "hola"]).error || "", /un solo proveedor/);
-  assert.match(parseArgs(["serve", "--port", "no"]).error || "", /puerto/);
+  assert.match(parseArgs(["--no-existe"]).error || "", /unknown option/);
+  assert.match(parseArgs(["--ollama", "--gemini", "hola"]).error || "", /one provider/);
+  assert.match(parseArgs(["serve", "--port", "no"]).error || "", /port must be a number/);
   assert.match(ayuda(), /ada serve/);
   assert.match(ayuda(), /ada run/);
   assert.match(ayuda(), /ada capas/);
+});
+
+test("terminal: el texto sale a medida que llega, y de una vez si el turno no trocea", async () => {
+  const original = process.stdout.write;
+  /** @type {string[]} */
+  const chunks = [];
+  process.stdout.write = /** @type {typeof process.stdout.write} */ ((chunk) => { chunks.push(String(chunk)); return true; });
+  const traza = { provider: "ollama", model: "m", calls: 1, tools: [], events: [], lastContext: null };
+  try {
+    await main(["hola"], {
+      turn: async ({ onText }) => { onText?.("ho"); onText?.("la"); return { text: "hola", trace: traza }; },
+      fixedLayers: async () => [],
+      loadRouting: async () => /** @type {any} */ ({}),
+      defaultCommand: "run",
+    });
+    assert.equal(chunks.join(""), "hola\n");
+    chunks.length = 0;
+    await main(["hola"], {
+      turn: async () => ({ text: "entero", trace: traza }),
+      fixedLayers: async () => [],
+      loadRouting: async () => /** @type {any} */ ({}),
+      defaultCommand: "run",
+    });
+    assert.equal(chunks.join(""), "entero\n");
+  } finally {
+    process.stdout.write = original;
+  }
 });

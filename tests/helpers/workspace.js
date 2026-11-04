@@ -1,5 +1,5 @@
-// Workspace temporal: cada prueba que escribe archivos lo hace en una carpeta propia,
-// nunca en el workspace/ real del repo.
+// Temporary workspace: each test that writes files does it in its own folder,
+// never in the repo's real workspace/.
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -19,8 +19,8 @@ export async function tempWorkspace() {
 }
 
 /**
- * Memoria temporal (ADA_MEMORY): las pruebas que escriben memoria no tocan harness/memory/ del repo.
- * Copia profile.md y preferences.md reales para que las capas de memoria se armen igual.
+ * Temporary memory (ADA_MEMORY): tests that write memory do not touch the repo's harness/memory/.
+ * Copies the real profile.md and preferences.md so the memory layers assemble the same way.
  * @returns {Promise<{ dir: string, cleanup: () => Promise<void> }>}
  */
 export async function tempMemory() {
@@ -39,7 +39,7 @@ export async function tempMemory() {
   };
 }
 
-/** Deja el entorno sin claves ni proveedor por defecto, como una máquina recién clonada. */
+/** Leaves the environment with no keys and no default provider, like a freshly cloned machine. */
 export function cleanEnv() {
   for (const k of ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "ADA_PROVIDER", "ADA_OLLAMA_MODEL", "ADA_OLLAMA_FAST_MODEL", "ADA_OLLAMA_NUM_CTX"]) delete process.env[k];
 }

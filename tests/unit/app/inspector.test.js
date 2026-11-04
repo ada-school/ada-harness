@@ -1,5 +1,5 @@
-// CU-03 Ver qué entró a la ventana de contexto. Lógica pura de app/js/inspector.js.
-// El trace tiene la forma real de POST /api/chat.
+// CU-03 See what entered the context window. Pure logic from app/js/inspector.js.
+// The trace has the real shape of POST /api/chat.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,37 +17,49 @@ const trace = {
 };
 
 test("CU-03.1 el inspector dice proveedor, modelo y ventana real", () => {
-  assert.equal(inspectorView(trace)?.modelo, "proveedor: ollama · qwen3:8b · ventana 16.384");
+  assert.equal(inspectorView(trace)?.modelo, "provider: ollama · qwen3:8b · window 16,384");
 });
 
 test("CU-03.2 el medidor toma la ventana real como 100% y dice cuánto ocupó la última llamada", () => {
   const v = inspectorView(trace);
   assert.deepEqual(v?.segmentos.map((s) => s.width), ["10.00%", "10.00%"]);
-  assert.equal(v?.usado, "~3.276 / 16.384 tokens estimados (20.0%)");
+  assert.match(v?.usado || "", /^~3,276 \/ 16,384 estimated tokens \(20\.0%\)/);
 });
 
 test("CU-03.3 sin ventana en el trace, usa la última conocida", () => {
   const v = inspectorView({ ...trace, budget: undefined }, 120000);
   assert.equal(v?.budget, 120000);
-  assert.equal(v?.modelo, "proveedor: ollama · qwen3:8b");
+  assert.equal(v?.modelo, "provider: ollama · qwen3:8b");
 });
 
 test("CU-03.5 contadores: llamadas del turno, herramientas y tokens de entrada reales", () => {
-  assert.deepEqual(inspectorView(trace)?.contadores, { calls: "2", tools: "1", intok: "2.100" });
+  assert.deepEqual(inspectorView(trace)?.contadores, { calls: "2", tools: "1", intok: "2,100" });
 });
 
 test("CU-03.6 los eventos son texto plano, también cuando el modelo mete HTML en una herramienta", () => {
   const v = /** @type {NonNullable<ReturnType<typeof inspectorView>>} */ (inspectorView(trace));
   assert.deepEqual(v.eventos.map((e) => e.cls), ["tool", "sub", "cmp", "cmp"]);
   assert.match(v.eventos[0].text, /<img src=x onerror=alert\(1\)>/, "se muestra literal; renderInspector lo pone con textContent");
-  assert.equal(v.eventos[1].text, "subagente reviewer: 2 llamadas, 1 herramientas");
-  assert.equal(v.eventos[2].text, `compactación: 3 mensajes → resumen de ~120 tok`);
-  assert.equal(v.eventos[3].text, "aviso: ventana chica");
+  assert.equal(v.eventos[1].text, "subagent reviewer: 2 calls, 1 tools");
+  assert.equal(v.eventos[2].text, `compaction: 3 messages → summary of ~120 tok`);
+  assert.equal(v.eventos[3].text, "warning: ventana chica");
 });
 
 test("CU-03.7 un turno sin herramientas ni eventos lo dice", () => {
   const v = inspectorView({ ...trace, tools: [], events: [] });
-  assert.deepEqual(v?.eventos, [{ cls: "empty", text: "Sin herramientas en este turno." }]);
+  assert.deepEqual(v?.eventos, [{ cls: "empty", text: "No tools in this turn." }]);
+});
+
+test("CU-03.9 la cuenta de la API queda al lado del estimado de 4 caracteres", () => {
+  const v = inspectorView(trace);
+  assert.equal(v?.usado, "~3,276 / 16,384 estimated tokens (20.0%) · 2,100 in");
+  const conSalida = inspectorView({
+    ...trace,
+    lastContext: { layers: trace.lastContext.layers, usage: { input_tokens: 2100, output_tokens: 40 } },
+  });
+  assert.equal(conSalida?.usado, "~3,276 / 16,384 estimated tokens (20.0%) · 2,100 in, 40 out");
+  const sin = inspectorView({ ...trace, lastContext: { layers: trace.lastContext.layers, usage: {} } });
+  assert.equal(sin?.usado, "~3,276 / 16,384 estimated tokens (20.0%)");
 });
 
 test("CU-03.8 un turno que terminó en error no cambia el inspector", () => {

@@ -1,35 +1,35 @@
-# 0005. Pruebas en tres capas, sin claves ni red
+# 0005. Tests in three layers, with no keys and no network
 
-**Estado:** aceptada, octubre de 2026.
+**Status:** accepted, October 2026.
 
-## Contexto
+## Context
 
-El harness habla con tres APIs y ejecuta herramientas sobre el disco. Una prueba que llama a una API real cuesta dinero, falla cuando la red falla y no corre en CI sin secretos. Una prueba que escribe en `workspace/` deja basura.
+The harness talks to three APIs and runs tools on disk. A test that calls a real API costs money, fails when the network fails, and does not run in CI without secrets. A test that writes in `workspace/` leaves junk.
 
-## Decisión
+## Decision
 
-Tres capas, cada una en su carpeta, y `node tests/run.js <capa>` para correr una:
+Three layers, each in its own folder, and `node tests/run.js <layer>` to run one:
 
-| Capa | Qué prueba | Con qué |
+| Layer | What it tests | With what |
 |---|---|---|
-| `tests/unit/` | Funciones puras: herramientas, contexto, ventana, chat, HTTP, terminal, arquitectura, trazabilidad | Nada externo |
-| `tests/providers/` | La traducción de cada adaptador | `fakeFetch` para Claude y Gemini, un servidor HTTP falso que imita a Ollama |
-| `tests/integration/` | El servidor real de punta a punta | Servidor en un puerto libre, Ollama falso |
+| `tests/unit/` | Pure functions: tools, context, window, chat, HTTP, terminal, architecture, traceability | Nothing external |
+| `tests/providers/` | Each adapter's translation | `fakeFetch` for Claude and Gemini, a fake HTTP server that imitates Ollama |
+| `tests/integration/` | The real server from end to end | Server on a free port, fake Ollama |
 
-- Ninguna prueba usa una clave real ni sale a internet.
-- Cada prueba que toca disco trabaja en un workspace temporal (`ADA_WORKSPACE`) y en una memoria temporal (`ADA_MEMORY`), ver `tests/helpers/workspace.js`. Correr las pruebas no deja rastro en el repo.
-- Las simulaciones siguen el formato documentado de cada API, no lo que nos gustaría que devolviera.
-- Solo `node:test` y `node:assert`. Sin frameworks de pruebas.
+- No test uses a real key or goes out to the internet.
+- Each test that touches disk works in a temporary workspace (`ADA_WORKSPACE`) and a temporary memory (`ADA_MEMORY`). See `tests/helpers/workspace.js`. Running the tests leaves no trace in the repo.
+- The simulations follow each API's documented format, not what we wish it returned.
+- Only `node:test` and `node:assert`. No test frameworks.
 
-## Consecuencias
+## Consequences
 
-- `npm test` corre en segundos, en cualquier máquina y en CI.
-- Si una API cambia su formato, las pruebas siguen verdes. Antes de un taller, haz un turno real con tu clave.
+- `npm test` runs in seconds, on any machine and in CI.
+- If an API changes its format, the tests stay green. Before a workshop, run one real turn with your key.
 
-## Se verifica en
+## Checked by
 
-`tests/run.js` y CI, que corre sin secretos en Node 18, 20 y 22.
+`tests/run.js` and CI, which runs with no secrets on Node 18, 20, and 22.
 
-## Cuándo revisarla
+## When to revisit
 
-Si aparece un error que solo una llamada real habría detectado. La respuesta sería una cuarta capa opcional (`tests/live/`), que corre solo con una clave presente y nunca en CI.
+If a bug appears that only a real call would have caught. The answer would be an optional fourth layer (`tests/live/`), which runs only when a key is present and never in CI.

@@ -1,7 +1,11 @@
-// Adaptador para la API de mensajes de Anthropic (Claude).
-// El formato interno del harness ES el de Anthropic, así que aquí casi no hay traducción:
-// solo se quitan los campos privados que otros adaptadores guardan en los bloques (los que
-// empiezan con "_", como _gemini), porque la API rechaza campos que no conoce.
+// Edit src/providers/anthropic.ts. Node runs the compiled file under dist/. Rebuild with npm run build.
+// Adapter for the Anthropic Messages API (Claude).
+// The harness internal format IS Anthropic's, so there is almost no translation here:
+// only the private fields other adapters store on blocks (the ones that start with "_",
+// such as _gemini) are removed, because the API rejects fields it does not know.
+
+import type { Block, CallArgs, Message, ModelResponse, Provider } from "../types.js";
+import { text } from "../text.js";
 
 const API = "https://api.anthropic.com/v1/messages";
 
@@ -14,9 +18,9 @@ export const anthropic = {
   fastModel: () => process.env.ADA_ANTHROPIC_FAST_MODEL || process.env.ADA_FAST_MODEL || "claude-haiku-5-5",
   configured: () => Boolean(process.env.ANTHROPIC_API_KEY),
 
-  async call({ model, system, messages, tools, maxTokens = 4096 }) {
+  async call({ model, system, messages, tools, maxTokens = 4096 }: CallArgs): Promise<ModelResponse> {
     const key = process.env.ANTHROPIC_API_KEY;
-    if (!key) throw new Error("Falta ANTHROPIC_API_KEY en .env");
+    if (!key) throw new Error(text("missingKey", { name: "ANTHROPIC_API_KEY" }));
     const res = await fetch(API, {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -26,14 +30,17 @@ export const anthropic = {
         ...(tools?.length ? { tools } : {}),
       }),
     });
-    const data = await res.json();
+    const data: any = await res.json();
     if (!res.ok) throw new Error(`Claude: ${data?.error?.message || `HTTP ${res.status}`}`);
-    // Ya viene en el formato interno: { content: [bloques], stop_reason, usage }
+    // Already in the internal format: { content: [blocks], stop_reason, usage }
     return { content: data.content, stop_reason: data.stop_reason, usage: data.usage };
   },
-};
+} satisfies Provider;
 
-function limpiar(m) {
+function limpiar(m: Message): Message {
   if (typeof m.content === "string") return m;
-  return { role: m.role, content: m.content.map((b) => Object.fromEntries(Object.entries(b).filter(([k]) => !k.startsWith("_")))) };
+  return {
+    role: m.role,
+    content: m.content.map((b) => Object.fromEntries(Object.entries(b).filter(([k]) => !k.startsWith("_"))) as Block),
+  };
 }

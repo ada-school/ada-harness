@@ -1,5 +1,6 @@
 ---
 name: profile
-description: Quién es la persona que usa este harness y en qué proyecto trabaja
+description: Who uses this harness and which project they work on
 ---
-- [stated] (vacío) Escribe aquí quién eres y en qué proyecto estás. El agente lo lee en cada conversación.
+- [stated] Who: write your name. The agent reads this on every conversation.
+- [stated] Project: the repo at `ADA_WORKSPACE`. If this stays empty, work lands in `workspace/`.

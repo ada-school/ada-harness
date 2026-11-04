@@ -1,36 +1,37 @@
-# CU-03 Ver qué entró a la ventana de contexto
+# CU-03 See what entered the context window
 
-**Actor:** quien aprende cómo funciona un agente, en un taller o por su cuenta.
-**Objetivo:** ver, después de cada turno, qué capas entraron a la última llamada, cuánto pesó cada una y qué hizo el loop.
-**Precondiciones:** hubo al menos un turno (CU-01).
-**Disparador:** llega la respuesta de un turno.
+**Actor:** someone learning how an agent works, in a workshop or on their own.
+**Goal:** see, after each turn, which layers entered the last call, how much each one weighed, and what the loop did.
+**Preconditions:** there has been at least one turn (CU-01).
+**Trigger:** a turn's reply arrives.
 
-## Flujo principal
+## Main flow
 
-1. El inspector muestra proveedor, modelo y tamaño de la ventana real.
-2. El medidor pinta cada capa con su color, en proporción a la ventana.
-3. La lista de capas dice cuántos tokens estimados pesó cada una.
-4. Los contadores dicen llamadas del turno, herramientas usadas y tokens de entrada reales.
-5. Los eventos listan herramientas, compactaciones, avisos y subagentes.
+1. The inspector shows the provider, the model, and the size of the real window.
+2. The meter paints each layer in its color, in proportion to the window.
+3. The layer list says how many estimated tokens each one weighed. The line under the meter says that estimate and, beside it, the input and output counts the API reported.
+4. The counters say the calls in the turn, the tools used, and the real input tokens.
+5. The events list tools, compactions, warnings, and subagents.
 
-## Flujos alternos
+## Alternate flows
 
-- **1a.** Si el turno no informa ventana, el inspector usa la última conocida.
-- **5a.** Si el turno no usó herramientas ni tuvo eventos, el inspector lo dice.
-- **5b.** Si el turno terminó en error, el inspector no cambia.
+- **1a.** If the turn does not report a window, the inspector uses the last known one.
+- **5a.** If the turn used no tools and had no events, the inspector says so.
+- **5b.** If the turn ended in an error, the inspector does not change.
 
-## Criterios de aceptación
+## Acceptance criteria
 
-- **CU-03.1** Dado un turno, cuando llega la respuesta, entonces el inspector dice el proveedor, el modelo y el tamaño de la ventana real.
-- **CU-03.2** Dado un turno, cuando llega la respuesta, entonces el medidor toma la ventana real del modelo como 100% y dice cuántos tokens estimados ocupó la última llamada y qué porcentaje es.
-- **CU-03.3** Dado un turno cuyo trace no informa ventana, cuando se actualiza el inspector, entonces usa la última ventana conocida.
-- **CU-03.4** Dada cualquier capa, cuando se pinta, entonces usa el mismo color que en el explicador; una capa desconocida usa un gris neutro.
-- **CU-03.5** Dado un turno, cuando llega la respuesta, entonces los contadores muestran las llamadas del turno, las herramientas usadas y los tokens de entrada reales que reportó la API.
-- **CU-03.6** Dado un turno con herramientas, compactaciones, avisos o subagentes, cuando se listan los eventos, entonces cada uno aparece como texto plano, aunque el modelo haya puesto HTML en la entrada de una herramienta.
-- **CU-03.7** Dado un turno sin herramientas ni eventos, cuando se actualiza el inspector, entonces los eventos dicen "Sin herramientas en este turno.".
-- **CU-03.8** Dado un turno que terminó en error, cuando llega la respuesta, entonces el inspector conserva la última llamada que sí se completó.
+- **CU-03.1** Given a turn, when the reply arrives, then the inspector says the provider, the model, and the size of the real window.
+- **CU-03.2** Given a turn, when the reply arrives, then the meter takes the model's real window as 100% and says how many estimated tokens the last call used and what percentage that is.
+- **CU-03.3** Given a turn whose trace does not report a window, when the inspector updates, then it uses the last known window.
+- **CU-03.4** Given any layer, when it is painted, then it uses the same color as in the explainer; an unknown layer uses a neutral gray.
+- **CU-03.5** Given a turn, when the reply arrives, then the counters show the calls in the turn, the tools used, and the real input tokens the API reported.
+- **CU-03.6** Given a turn with tools, compactions, warnings, or subagents, when the events are listed, then each one appears as plain text, even if the model put HTML in a tool's input.
+- **CU-03.7** Given a turn with no tools and no events, when the inspector updates, then the events say "No tools in this turn.".
+- **CU-03.8** Given a turn that ended in an error, when the reply arrives, then the inspector keeps the last call that did complete.
+- **CU-03.9** Given a turn whose API reported token counts, when the inspector updates, then those counts appear beside the 4-character estimate, and the output count appears when the API sent it.
 
-## Fuera de alcance
+## Out of scope
 
-- Ver el texto completo de cada capa: para eso está el explicador.
-- Historial de turnos anteriores en el inspector: muestra solo la última llamada.
+- Seeing the full text of each layer: that is what the explainer is for.
+- History of earlier turns in the inspector: it shows only the last call.

@@ -1,15 +1,15 @@
 ---
 name: spec-first
-description: Procedimiento para empezar cualquier feature o cambio no trivial: escribir una spec corta antes de código. Cárgalo cuando el usuario pida construir algo nuevo.
+description: Procedure for starting any feature or non-trivial change. Write a short spec before code. Load it when the user asks to build something new.
 ---
 # Spec first
 
-Antes de escribir código para una funcionalidad nueva, crea `workspace/specs/<nombre>.md` con exactamente estas secciones:
+Before writing code for a new feature, create `workspace/specs/<name>.md` with exactly these sections:
 
-1. **Objetivo** (una frase): qué podrá hacer el usuario que hoy no puede.
-2. **Fuera de alcance**: qué NO se va a hacer en esta iteración.
-3. **Interfaz**: funciones, endpoints o comandos que se agregan, con firma.
-4. **Criterio de listo**: cómo se verifica, en forma de comandos o pruebas.
-5. **Riesgos**: qué podría romperse.
+1. **Goal** (one sentence): what the user will be able to do that they cannot do today.
+2. **Out of scope**: what this iteration will not do.
+3. **Interface**: functions, endpoints, or commands you add, with their signatures.
+4. **Done when**: how to check it, as commands or tests.
+5. **Risks**: what could break.
 
-Luego muestra la spec al usuario y espera confirmación antes de implementar. Si el usuario ya dio todos los detalles y la tarea es pequeña, escribe la spec y sigue sin esperar.
+Then show the spec to the user and wait for confirmation before implementing. If the user already gave every detail and the task is small, write the spec and continue without waiting.

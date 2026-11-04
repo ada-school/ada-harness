@@ -1,22 +1,22 @@
-// Trazabilidad: cada criterio de docs/casos-de-uso/ contra las pruebas que lo nombran.
-// Un criterio es una línea "- **CU-01.2** ..." en un CU-*.md. Una prueba lo cubre si su nombre
-// incluye el ID: test("CU-01.2 un mensaje vacío no se envía", ...).
+// Traceability: each criterion in docs/casos-de-uso/ against the tests that name it.
+// A criterion is a line "- **CU-01.2** ..." in a CU-*.md. A test covers it if its name
+// includes the ID: test("CU-01.2 an empty message is not sent", ...).
 //
-//   npm run trazabilidad    imprime la matriz y termina con error si falta algo
+//   npm run trazabilidad    prints the matrix and exits with an error if something is missing
 //
-// tests/unit/casos-de-uso.test.js usa estas mismas funciones.
+// tests/unit/casos-de-uso.test.js uses these same functions.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { paths } from "../src/config.js";
+import { paths } from "../dist/src/config.js";
 
 /** @typedef {{ id: string, caso: string, manual: boolean, texto: string }} Criterio */
 
 const ID = /CU-\d{2}\.\d+/g;
 
 /**
- * Los criterios de aceptación de todos los casos de uso.
+ * The acceptance criteria of every use case.
  * @param {string} [dir]
  * @returns {Criterio[]}
  */
@@ -33,9 +33,9 @@ export function leerCriterios(dir = path.join(paths.docs, "casos-de-uso")) {
 }
 
 /**
- * Qué pruebas nombran cada criterio. Solo cuentan los nombres de test(...), no los comentarios.
+ * Which tests name each criterion. Only test(...) names count, not comments.
  * @param {string} [dir]
- * @returns {Map<string, string[]>} ID -> ["archivo › nombre de la prueba"]
+ * @returns {Map<string, string[]>} ID -> ["file › test name"]
  */
 export function leerReferencias(dir = path.join(paths.root, "tests")) {
   /** @type {Map<string, string[]>} */
@@ -61,7 +61,7 @@ function archivosDePrueba(dir) {
   });
 }
 
-/** La matriz completa y lo que falta. */
+/** The full matrix and what is missing. */
 export function trazabilidad() {
   const criterios = leerCriterios();
   const refs = leerReferencias();
@@ -77,7 +77,7 @@ export function trazabilidad() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const t = trazabilidad();
   for (const f of t.filas) {
-    const estado = f.pruebas.length ? f.pruebas.join("\n          ") : f.manual ? "(manual) " + f.texto.replace(/^.*Verificación:\s*/, "verificar: ") : "SIN PRUEBA";
+    const estado = f.pruebas.length ? f.pruebas.join("\n          ") : f.manual ? "(manual) " + f.texto.replace(/^.*Verification:\s*/, "verify: ") : "SIN PRUEBA";
     console.log(`${f.id.padEnd(9)} ${estado}`);
   }
   const manuales = t.filas.filter((f) => f.manual).length;

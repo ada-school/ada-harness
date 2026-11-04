@@ -1,28 +1,28 @@
-# 0002. Un formato interno de mensajes y un adaptador por proveedor
+# 0002. One internal message format and one adapter per provider
 
-**Estado:** aceptada, octubre de 2026.
+**Status:** accepted, October 2026.
 
-## Contexto
+## Context
 
-El harness habla con Claude, Gemini y Ollama. Cada API tiene su forma de representar un pedido de herramienta y su resultado: `tool_use` y `tool_result` en Claude, `functionCall` y `functionResponse` en Gemini, el rol `tool` en Ollama. Si el loop conociera esas diferencias, cada proveedor nuevo tocaría el corazón del harness.
+The harness talks to Claude, Gemini, and Ollama. Each API has its own way to represent a tool request and its result: `tool_use` and `tool_result` in Claude, `functionCall` and `functionResponse` in Gemini, the `tool` role in Ollama. If the loop knew those differences, every new provider would touch the heart of the harness.
 
-## Decisión
+## Decision
 
-- El historial se guarda siempre en un solo formato: el de bloques de la API de Anthropic (`text`, `tool_use`, `tool_result`). Está tipado en `src/types.js`.
-- Cada proveedor vive en `src/providers/<nombre>.js` y cumple el contrato `Provider`: traduce el historial a su API y la respuesta de vuelta al formato interno.
-- Lo que un adaptador necesita recordar entre llamadas se guarda en el bloque con un campo que empieza con `_` (por ejemplo `_gemini.thoughtSignature`). Ningún otro adaptador lo envía a su API.
-- Cambiar de proveedor empieza una conversación nueva. Las firmas y los ids de una API no sirven en otra.
+- History is always stored in one format: the block format of the Anthropic API (`text`, `tool_use`, `tool_result`). It is typed in `src/types.ts`.
+- Each provider lives in `src/providers/<name>.ts` and meets the `Provider` contract: it translates the history to its API and the response back to the internal format. Node runs the compiled file under `dist/src/providers/`. Claude is `anthropic.ts`. Gemini is `gemini.ts`. Ollama is `ollama.ts`.
+- What an adapter needs to remember between calls is stored on the block in a field that starts with `_` (for example `_gemini.thoughtSignature`). No other adapter sends it to its API.
+- Changing provider starts a new conversation. One API's signatures and ids are useless in another.
 
-## Consecuencias
+## Consequences
 
-- El loop (`src/harness.js`) no tiene un solo `if` por proveedor.
-- Agregar un proveedor es un archivo y una línea en `src/providers/index.js`.
-- Claude casi no traduce, y eso es una ventaja de partida para Anthropic que aceptamos: el formato está bien documentado y cubre todo lo que el loop necesita.
+- The loop (`src/harness.ts`; Node runs `dist/src/harness.js`) has no `if` per provider.
+- Adding a provider is one file and one line in `src/providers/index.ts`. Node runs `dist/src/providers/index.js`.
+- Claude barely translates, and that is a starting advantage for Anthropic that we accept: the format is well documented and covers everything the loop needs.
 
-## Se verifica en
+## Checked by
 
-`tests/providers/`: traducción de ida y vuelta, ids de herramientas, firmas de Gemini que vuelven intactas y campos privados que no salen hacia otra API.
+`tests/providers/`: round-trip translation, tool ids, Gemini signatures that come back intact, and private fields that do not leak to another API.
 
-## Cuándo revisarla
+## When to revisit
 
-Si una API nueva necesita algo que el formato de bloques no puede expresar (por ejemplo, salidas de audio o herramientas que corren del lado del proveedor).
+If a new API needs something the block format cannot express (for example, audio output or tools that run on the provider's side).

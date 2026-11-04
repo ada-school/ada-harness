@@ -1,68 +1,68 @@
 ---
 name: frontend-tdd
-description: Proceso para crear o cambiar una pantalla: caso de uso, pruebas primero y arquitectura sin compilación. Cárgalo antes de tocar el front end.
+description: Process for creating or changing a screen. Use case, tests first, and no build step. Load it before touching the front end.
 ---
-# Front end con casos de uso y pruebas primero
+# Front end with use cases and tests first
 
-Aplica a todo cambio que una persona note en pantalla, bugs incluidos: un bug es un criterio que no se cumple.
+This applies to every change a person would notice on screen, bugs included: a bug is a criterion that is not met.
 
-Antes de empezar, lee las reglas de arquitectura: `/harness/skills/frontend-tdd/arquitectura.md`. El porqué de cada regla está en `/docs/decisiones/`.
+Before you start, read the architecture rules: `/harness/skills/frontend-tdd/arquitectura.md`. The reason for each rule is in `/docs/decisiones/`.
 
-Rutas de este repo: casos de uso en `docs/casos-de-uso/`, código en `app/js/`, pruebas en `tests/unit/app/`. En otro proyecto, usa las rutas que diga su AGENTS.md.
+Paths in this repo: use cases in `docs/casos-de-uso/`, code in `app/js/`, tests in `tests/unit/app/`. In another project, use the paths its AGENTS.md names.
 
-## 1. Caso de uso
+## 1. Use case
 
-1. Busca en `docs/casos-de-uso/` un caso que cubra el cambio. Si existe, agrega criterios con el siguiente número libre. Si no, crea `CU-NN-nombre.md` desde `/harness/skills/frontend-tdd/plantilla-caso-de-uso.md`.
-2. Escribe cada criterio en una línea, con su ID en negrita y la forma "Dado..., cuando..., entonces...": `- **CU-05.1** Dado ..., cuando ..., entonces ...`
-3. Un criterio describe algo que la persona observa, no cómo se implementa. "El botón queda deshabilitado mientras espera" sí; "se llama a setDisabled" no.
-4. Si un criterio no se puede automatizar (cómo se ve algo), márcalo `(manual)` y escribe cómo verificarlo.
-5. Si la tarea es ambigua, detente y devuelve las preguntas. Un criterio inventado es peor que una pregunta.
-6. Un criterio que deja de aplicar se borra junto con sus pruebas. Su número no se reutiliza.
+1. Look in `docs/casos-de-uso/` for a case that covers the change. If one exists, add criteria with the next free number. If not, create `CU-NN-name.md` from `/harness/skills/frontend-tdd/plantilla-caso-de-uso.md`.
+2. Write each criterion on one line, with its ID in bold and the shape "Given..., when..., then...": `- **CU-05.1** Given ..., when ..., then ...`
+3. A criterion describes something the person observes, not how it is implemented. "The button stays disabled while it waits" yes. "setDisabled is called" no.
+4. If a criterion cannot be automated (how something looks), mark it `(manual)` and write how to check it.
+5. If the task is ambiguous, stop and return the questions. An invented criterion is worse than a question.
+6. A criterion that no longer applies is deleted together with its tests. Its number is not reused.
 
-## 2. Rojo: la prueba primero
+## 2. Red: the test first
 
-Un criterio a la vez, en orden:
+One criterion at a time, in order:
 
-1. Decide qué función pura lo decide (arquitectura.md, sección 2). Si todavía no existe, la prueba la importa igual: el rojo será "no existe".
-2. Escribe la prueba en `tests/unit/app/<modulo>.test.js`. El nombre empieza con el ID: `test("CU-05.1 un mensaje vacío no se envía", ...)`.
-3. Córrela sola: `node --test tests/unit/app/<modulo>.test.js`.
-4. Confirma que falla y que falla por la razón esperada, no por un error de sintaxis o un import mal escrito. Lee el mensaje.
-5. Si el comportamiento ya existía (prueba de caracterización), pasará de entrada. Rompe el código a propósito, confirma que la prueba lo detecta y deja el código como estaba.
+1. Decide which pure function decides it (arquitectura.md, section 2). If it does not exist yet, the test imports it anyway: the red will be "does not exist".
+2. Write the test in `tests/unit/app/<module>.test.js`. The name starts with the ID: `test("CU-05.1 an empty message is not sent", ...)`.
+3. Run it alone: `node --test tests/unit/app/<module>.test.js`.
+4. Confirm that it fails, and that it fails for the expected reason, not because of a syntax error or a bad import. Read the message.
+5. If the behavior already existed (a characterization test), it will pass on the first run. Break the code on purpose, confirm the test catches it, and put the code back.
 
-## 3. Verde: el mínimo código
+## 3. Green: the minimum code
 
-1. Escribe solo lo necesario para que esa prueba pase. Nada para criterios futuros.
-2. La decisión va en la función pura. El `render*()` solo pinta. `main.js` solo conecta.
-3. Corre de nuevo el archivo de pruebas. Si otra prueba se puso roja, arréglalo antes de seguir.
+1. Write only what that test needs in order to pass. Nothing for future criteria.
+2. The decision goes in the pure function. `render*()` only paints. `main.js` only wires things together.
+3. Run the test file again. If another test turned red, fix it before continuing.
 
-## 4. Limpieza con todo en verde
+## 4. Cleanup, with everything green
 
-1. Mejora nombres, quita duplicación, completa el JSDoc de lo que exportas. Las pruebas no cambian en este paso.
-2. Corre `npm run check` (tipos, todas las pruebas, arquitectura y trazabilidad). Si algo falla, vuelve atrás: nunca avances sobre rojo.
-3. Vuelve al paso 2 con el siguiente criterio.
+1. Improve names, remove duplication, and complete the JSDoc of what you export. Tests do not change in this step.
+2. Run `npm run check` (types, every test, architecture, and traceability). If something fails, go back: never continue on red.
+3. Return to step 2 with the next criterion.
 
-## 5. Integración y pantalla
+## 5. Integration and the screen
 
-1. Si el criterio cruza el servidor (sesiones, proveedores, rutas), agrega o ajusta una prueba en `tests/integration/` con el ID en el nombre.
-2. Abre el chat (`npm start`) y recorre el flujo principal y los alternos del caso. Los criterios `(manual)` se verifican aquí.
-3. Corre `npm run trazabilidad` y confirma que cada criterio del caso tiene su prueba.
+1. If the criterion crosses the server (sessions, providers, routes), add or adjust a test in `tests/integration/` with the ID in the name.
+2. Open the chat (`npm start`) and walk the main flow and the alternate flows of the case. `(manual)` criteria are checked here.
+3. Run `npm run trazabilidad` and confirm that every criterion of the case has its test.
 
-## 6. Listo cuando
+## 6. Done when
 
-- Cada criterio del caso tiene una prueba que nombra su ID, o está marcado `(manual)` con su verificación.
-- `npm run check` pasa.
-- El caso de uso describe lo que se construyó. Si el alcance cambió en el camino, el caso cambió primero.
-- Si cambió la estructura de archivos, el README y CLAUDE.md lo dicen.
-- El agente `qa` revisó y no dejó bloqueantes.
+- Every criterion of the case has a test that names its ID, or is marked `(manual)` with how to check it.
+- `npm run check` passes.
+- The use case describes what was built. If the scope changed along the way, the case changed first.
+- If the file structure changed, the README and CLAUDE.md say so.
+- The `qa` agent reviewed it and left no blockers.
 
-## Errores que este proceso evita
+## Mistakes this process avoids
 
-- Escribir primero el render y probar a mano.
-- Una prueba por función en vez de una por criterio.
-- Una prueba que repite el cálculo de la implementación: si los dos tienen el mismo error, la prueba pasa.
-- Varios criterios en una sola prueba: cuando falla, no sabes cuál se rompió.
-- Borrar o debilitar una prueba para que pase.
+- Writing the render first and testing by hand.
+- One test per function instead of one per criterion.
+- A test that repeats the implementation's calculation: if both have the same bug, the test passes.
+- Several criteria in one test: when it fails, you do not know which one broke.
+- Deleting or weakening a test so it passes.
 
-## Qué entregar
+## What to deliver
 
-Un informe corto: caso de uso y criterios cubiertos (ID y prueba), archivos cambiados, salida resumida de `npm run check` y lo que quedó pendiente o manual.
+A short report: the use case and the criteria covered (ID and test), files changed, a short summary of `npm run check`, and what is still pending or manual.

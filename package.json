@@ -11,19 +11,23 @@
     "ada": "bin/ada.js"
   },
   "scripts": {
-    "start": "node bin/ada.js serve",
-    "cli": "node bin/ada.js run",
-    "capas": "node bin/ada.js capas",
-    "test": "node tests/run.js",
-    "test:unit": "node tests/run.js unit",
-    "test:providers": "node tests/run.js providers",
-    "test:integration": "node tests/run.js integration",
-    "trazabilidad": "node tests/trazabilidad.js",
-    "typecheck": "tsc -p jsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "npm run build && node bin/ada.js serve",
+    "cli": "npm run build && node bin/ada.js run",
+    "capas": "npm run build && node bin/ada.js capas",
+    "test": "npm run build && node tests/run.js",
+    "test:unit": "npm run build && node tests/run.js unit",
+    "test:providers": "npm run build && node tests/run.js providers",
+    "test:integration": "npm run build && node tests/run.js integration",
+    "trazabilidad": "npm run build && node tests/trazabilidad.js",
+    "typecheck": "npm run build && tsc -p tsconfig.json",
     "check": "npm run typecheck && npm test"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
     "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "ajv": "8.17.1"
   }
 }

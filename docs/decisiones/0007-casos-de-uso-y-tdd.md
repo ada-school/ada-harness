@@ -1,32 +1,32 @@
-# 0007. El front end se construye con casos de uso y pruebas primero
+# 0007. The front end is built with use cases and tests first
 
-**Estado:** aceptada, octubre de 2026.
+**Status:** accepted, October 2026.
 
-## Contexto
+## Context
 
-Con la [0003](0003-vista-pura-render-delgado.md), la lógica del chat se puede probar en Node. Falta decidir qué se prueba y en qué orden. Sin eso, las pruebas terminan describiendo la implementación ("buildOptions devuelve dos grupos") en vez de lo que la persona necesita, y nadie sabe si una pantalla está completa.
+With [0003](0003-vista-pura-render-delgado.md), the chat logic can be tested in Node. What was missing was what to test, and in what order. Without that, tests end up describing the implementation ("buildOptions returns two groups") instead of what the person needs, and nobody knows whether a screen is complete.
 
-## Decisión
+## Decision
 
-- Todo cambio que una persona note en pantalla parte de un caso de uso en `docs/casos-de-uso/`, con criterios de aceptación numerados (`CU-01.2`).
-- Cada criterio se implementa en ciclo de pruebas primero: una prueba que falla por la razón esperada, el código mínimo que la hace pasar, y limpieza con todo en verde.
-- El nombre de cada prueba empieza con el ID del criterio que cubre. Así la trazabilidad se calcula, no se mantiene a mano.
-- Un criterio que no se puede automatizar (por ejemplo, cómo se ve algo) se marca `(manual)` y dice cómo verificarlo.
-- Un bug es un criterio que no se cumple: primero la prueba que lo reproduce.
-- Al terminar, el agente `qa` revisa el proyecto contra las decisiones y los casos de uso.
+- Every change a person would notice on screen starts from a use case in `docs/casos-de-uso/`, with numbered acceptance criteria (`CU-01.2`).
+- Each criterion is implemented in a tests-first cycle: a test that fails for the expected reason, the minimum code that makes it pass, and cleanup with everything green.
+- Each test's name starts with the ID of the criterion it covers. Traceability is computed, not kept by hand.
+- A criterion that cannot be automated (for example, how something looks) is marked `(manual)` and says how to check it.
+- A bug is a criterion that is not met: first the test that reproduces it.
+- At the end, the `qa` agent reviews the project against the decisions and the use cases.
 
-El procedimiento completo está en `harness/skills/frontend-tdd/SKILL.md`.
+The full procedure is in `harness/skills/frontend-tdd/SKILL.md`.
 
-## Consecuencias
+## Consequences
 
-- `npm run trazabilidad` muestra qué criterio cubre cada prueba y cuáles faltan.
-- Escribir el caso de uso antes toma minutos y evita construir lo que nadie pidió.
-- Las pruebas de comportamiento que ya existía pasan de entrada. Para confiar en ellas hay que romper el código a propósito y ver que fallan.
+- `npm run trazabilidad` shows which criterion each test covers and which ones are missing.
+- Writing the use case first takes minutes and avoids building what nobody asked for.
+- Tests of behavior that already existed pass on the first run. To trust them, break the code on purpose and see that they fail.
 
-## Se verifica en
+## Checked by
 
-`tests/unit/casos-de-uso.test.js`: falla si un criterio automático no tiene prueba, si una prueba nombra un criterio que no existe o si un ID se repite.
+`tests/unit/casos-de-uso.test.js`: it fails if an automatic criterion has no test, if a test names a criterion that does not exist, or if an ID is repeated.
 
-## Cuándo revisarla
+## When to revisit
 
-Si los casos de uso dejan de ser la forma en que el equipo piensa las pantallas (por ejemplo, un sistema de diseño con historias por componente). La trazabilidad por ID se mantiene igual.
+If use cases stop being the way the team thinks about screens (for example, a design system with one story per component). Traceability by ID stays the same.

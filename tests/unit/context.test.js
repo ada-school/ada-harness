@@ -1,8 +1,8 @@
-// Contexto: cómo se arma la ventana a partir de las capas.
+// Context: how the window is assembled from the layers.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { frontmatter, estimateTokens, historyReport, assembleSystem, skillsIndex, loadRouting } from "../../src/context.js";
+import { frontmatter, estimateTokens, historyReport, assembleSystem, skillsIndex, loadRouting } from "../../dist/src/context.js";
 
 test("frontmatter: lee claves, también con saltos de línea de Windows y BOM", () => {
   const esperado = { name: "x", description: "Cárgalo cuando pidan y" };
@@ -28,7 +28,7 @@ test("historyReport: separa usuario, asistente y resultados de herramientas", ()
 
 test("índice de skills: nombre y descripción, nunca el cuerpo", async () => {
   const idx = await skillsIndex("harness/skills");
-  assert.match(idx, /- spec-first: Procedimiento para empezar/);
+  assert.match(idx, /- spec-first: Procedure for starting/);
   assert.match(idx, /- commit-convention: /);
   assert.doesNotMatch(idx, /# Spec first/, "el cuerpo del skill no entra al índice");
 });
@@ -46,6 +46,6 @@ test("assembleSystem: un subagente solo recibe su prompt y la guía del proyecto
   const routing = await loadRouting();
   const { system, layers } = await assembleSystem({ routing, agentName: "reviewer" });
   assert.deepEqual(layers.map((l) => l.name), ["system (agente: reviewer)", "projectGuide"]);
-  assert.match(system, /subagente revisor/);
+  assert.match(system, /reviewer subagent/);
   assert.doesNotMatch(system, /skillsIndex|memoryCore/);
 });

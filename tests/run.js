@@ -1,5 +1,5 @@
-// Corre una capa de pruebas: node tests/run.js [unit | providers | integration]
-// Sin argumento, todas. Funciona igual en Windows, macOS y Linux (no depende de globs del shell).
+// Runs one test layer: node tests/run.js [unit | providers | integration]
+// With no argument, all of them. Works the same on Windows, macOS, and Linux (it does not depend on shell globs).
 import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";

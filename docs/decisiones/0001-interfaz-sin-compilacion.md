@@ -1,45 +1,45 @@
-# 0001. El chat sigue sin paso de compilación
+# 0001. The chat stays without a build step
 
-**Estado:** aceptada, octubre de 2026.
+**Status:** accepted, October 2026. The chat still has no build and imports no package. The engine compile is [0011](0011-ingles-typescript-y-librerias.md): `npm install`, then `npm start`. The engine's one runtime dependency is `ajv` ([0009](0009-validacion-de-herramientas.md)).
 
-## Contexto
+## Context
 
-Llegó una propuesta para reescribir la interfaz con Preact, Tailwind v4, Vite y TypeScript, alrededor de un motor que pinta componentes a partir de un manifiesto JSON (`ComponentNode` → `RenderEngine`). El objetivo declarado era una estructura mejor, más legible, fácil de mantener y con una capa de pruebas.
+A proposal arrived to rewrite the interface with Preact, Tailwind v4, Vite, and TypeScript, around an engine that paints components from a JSON manifest (`ComponentNode` → `RenderEngine`). The stated goal was a better structure, more readable, easier to maintain, and with a test layer.
 
-El objetivo es correcto. Antes de este cambio el chat era un solo `index.html` con estilos, lógica y DOM mezclados, y no había pruebas fuera de los adaptadores de modelos.
+The goal is right. Before this change the chat was a single `index.html` with styles, logic, and the DOM mixed together, and there were no tests outside the model adapters.
 
-## Decisión
+## Decision
 
-Tomamos los objetivos de la propuesta y no sus herramientas. El chat sigue siendo HTML, un CSS y módulos ES nativos que el navegador carga tal cual.
+We took the goals of the proposal and not its tools. The chat stays HTML, one CSS file, and native ES modules that the browser loads as they are.
 
-Lo que sí cambió:
+What did change:
 
-| Objetivo de la propuesta | Cómo quedó resuelto |
+| Goal of the proposal | How it was solved |
 |---|---|
-| Tipos | JSDoc revisado por TypeScript en modo estricto ([0004](0004-tipos-con-jsdoc.md)). El código sigue siendo JavaScript y corre sin compilar. |
-| Componentes | `app/js/`: módulos chicos, cada uno con un trabajo. La lógica es pura y el render no decide ([0003](0003-vista-pura-render-delgado.md)). |
-| Tokens de diseño | Variables CSS en `app/styles.css`, con los mismos colores por capa que el explicador. |
-| Pruebas | Tres capas (unit, providers, integration) y CI en Node 18, 20 y 22. La lógica del chat se prueba en Node, sin navegador ([0005](0005-pruebas-sin-red.md)). |
-| Estructura del servidor | `src/` separado por trabajo: `config`, `window`, `cli`, `http/static`, `http/api`. |
+| Types | JSDoc checked by TypeScript in strict mode ([0004](0004-tipos-con-jsdoc.md)). The code stays JavaScript and runs without compiling. |
+| Components | `app/js/`: small modules, each with one job. The logic is pure and render does not decide ([0003](0003-vista-pura-render-delgado.md)). |
+| Design tokens | CSS variables in `app/styles.css`, with the same color per layer as the explainer. |
+| Tests | Three layers (unit, providers, integration) and CI on Node 18, 20, and 22. The chat logic is tested in Node, with no browser ([0005](0005-pruebas-sin-red.md)). |
+| Server structure | `src/` split by job: `config`, `window`, `cli`, `http/static`, `http/api`. |
 
-## Por qué no las herramientas
+## Why not the tools
 
-1. **El taller depende de clonar y correr.** Hoy basta `git clone` y `node src/server.js`, con Node 18 o superior y sin internet después del clon. Vite 8 pide Node 20.19 o 22.12 en adelante, y el conjunto propuesto suma unos 150 paquetes en el lockfile, varios con binarios nativos por plataforma. En una sala con Wi-Fi compartido y portátiles con Windows, eso es lo que se rompe primero.
-2. **El framework sería más grande que la app.** El chat eran unas 300 líneas de JavaScript cuando se tomó esta decisión. Con este tamaño, un framework agrega más superficie para entender que la que ahorra.
-3. **El manifiesto resuelve otro problema.** Un motor que pinta pantallas desde JSON sirve cuando las pantallas son datos: muchas variantes configurables, o una interfaz que el agente genera. El chat es una sola pantalla fija. Poner una capa de interpretación entre el código y lo que se ve contradice el principio del proyecto: todo es texto que puedes leer y seguir.
-4. **El motor propuesto tenía huecos.** Props como `Record<string, any>` (los tipos se pierden justo en el borde), llaves por índice en las listas, ningún esquema que valide el manifiesto antes de pintarlo, ningún modelo de estado ni de eventos, y ninguna prueba. Si el manifiesto llegara algún día desde la salida de un modelo, la falta de validación sería una superficie de inyección.
-5. **La paleta.** La propuesta usaba un azul genérico. En el harness, el color de cada capa es el mismo en el explicador y en el inspector, y esa coincidencia es parte de lo que enseña.
+1. **The workshop depends on a short install.** `npm install`, then `npm start`, compiles the engine ([0011](0011-ingles-typescript-y-librerias.md)). The chat itself still has no build and imports no package. Vite 8 asks for Node 20.19 or 22.12 and up, and the proposed set adds about 150 packages to the lockfile, several with native binaries per platform. In a room with shared Wi-Fi and Windows laptops, that is what breaks first.
+2. **The framework would be larger than the app.** The chat was about 300 lines of JavaScript when this decision was made. At that size, a framework adds more surface to understand than it saves.
+3. **The manifest solves a different problem.** An engine that paints screens from JSON helps when screens are data: many configurable variants, or an interface the agent generates. The chat is one fixed screen. Putting an interpretation layer between the code and what you see contradicts the project's principle: everything is text you can read and follow.
+4. **The proposed engine had gaps.** Props such as `Record<string, any>` (the types are lost right at the edge), index keys on lists, no schema that validates the manifest before painting it, no state or event model, and no tests. If the manifest ever arrived from a model's output, the missing validation would be an injection surface.
+5. **The palette.** The proposal used a generic blue. In the harness, each layer's color is the same in the explainer and in the inspector, and that match is part of what it teaches.
 
-## Cuándo revisar esta decisión
+## When to revisit
 
-| Señal | Qué haríamos |
+| Signal | What we would do |
 |---|---|
-| El chat pasa a varias pantallas (sesiones guardadas, editor de skills, panel de memoria) o el estado compartido entre módulos empieza a duplicarse | Preact con `htm`, copiado en `app/vendor/` como un archivo. Componentes con estado, sin build y sin `npm install`. |
-| El agente necesita devolver interfaz (formularios, tablas, tarjetas) | Un manifiesto, esta vez con esquema validado, lista cerrada de componentes y pruebas de que un manifiesto malicioso no ejecuta nada. |
-| El equipo que mantiene el repo ya trabaja en TypeScript y la interfaz creció | Vite y TypeScript para `app/`, con el servidor sirviendo `app/dist/` y un `npm start` que compile solo cuando haga falta, para no romper el flujo del taller. |
+| The chat grows to several screens (saved sessions, a skill editor, a memory panel), or shared state between modules starts to be duplicated | Preact with `htm`, copied into `app/vendor/` as one file. Components with state, no build and no `npm install`. |
+| The agent needs to return interface (forms, tables, cards) | A manifest, this time with a validated schema, a closed list of components, and tests that a malicious manifest runs nothing. |
+| The team that maintains the repo already works in TypeScript and the interface has grown | Vite and TypeScript for `app/`, with the server serving `app/dist/` and an `npm start` that compiles only when needed, so the workshop flow does not break. |
 
-Mientras ninguna de estas señales aparezca, la regla es la misma que para el resto del harness: lo mínimo que se pueda leer de punta a punta.
+Until one of these signals appears, the rule is the same as for the rest of the harness: the minimum that can be read from end to end.
 
-## Se verifica en
+## Checked by
 
-`tests/unit/arquitectura.test.js`: falla si un módulo de `app/js/` importa un paquete en vez de una ruta relativa, o si `package.json` declara dependencias para correr.
+`tests/unit/arquitectura.test.js`: it fails if a module in `app/js/` imports a package instead of a relative path, or if `package.json` declares a runtime dependency other than `ajv`.

@@ -1,7 +1,7 @@
 // Utilidades de presentación, sin DOM.
 
 /** @param {number | undefined} n */
-export const num = (n) => Number(n || 0).toLocaleString("es-CO");
+export const num = (n) => Number(n || 0).toLocaleString("en-US");
 
 /** Color de cada capa: el mismo del explicador y de styles.css. */
 const COLORES = {

@@ -1,11 +1,11 @@
-// Agentes (decisión 0008): un agente es un archivo en harness/agents/ y una entrada en routing.json.
-// spawn_agent se arma desde ese índice, sin listas escritas a mano en el código.
+// Agents (decision 0008): an agent is a file in harness/agents/ and an entry in routing.json.
+// spawn_agent is built from that index, with no lists written by hand in the code.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agentsIndex, assembleSystem, loadRouting, estimateTokens } from "../../src/context.js";
-import { spawnDefinition, modelFor, fixedLayers } from "../../src/harness.js";
-import { tools, definitions } from "../../harness/tools/index.js";
+import { agentsIndex, assembleSystem, loadRouting, estimateTokens } from "../../dist/src/context.js";
+import { spawnDefinition, modelFor, fixedLayers } from "../../dist/src/harness.js";
+import { tools, definitions } from "../../dist/harness/tools/index.js";
 
 const routing = await loadRouting();
 const indice = await agentsIndex(routing);
@@ -44,7 +44,7 @@ test("spawn_agent se arma desde el índice: cada agente con su descripción", ()
 test("un subagente recibe el cuerpo de su archivo, sin el frontmatter", async () => {
   const { system, layers } = await assembleSystem({ routing, agentName: "frontend" });
   assert.deepEqual(layers.map((l) => l.name), ["system (agente: frontend)", "projectGuide"]);
-  assert.match(system, /subagente de front end/);
+  assert.match(system, /front-end subagent/);
   assert.doesNotMatch(system, /^name: frontend$/m);
 });
 

@@ -1,10 +1,13 @@
-// Archivos estáticos: el chat (app/) y la documentación (docs/). Nada más se sirve.
+// Edit src/http/static.ts. Node runs the compiled file under dist/. Rebuild with npm run build.
+// Static files: the chat (app/) and the documentation (docs/). Nothing else is served.
 
 import { promises as fs } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { paths } from "../config.js";
+import { text } from "../text.js";
 
-const TYPES = {
+const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -15,15 +18,15 @@ const TYPES = {
 };
 
 /**
- * Traduce una URL a un archivo dentro de app/ o docs/. Devuelve null si cae afuera.
+ * Maps a URL to a file inside app/ or docs/. Returns null if it falls outside.
  *   /            -> app/index.html
  *   /docs/x.html -> docs/x.html
  *   /js/main.js  -> app/js/main.js
  * @param {string} url
  * @returns {string | null}
  */
-export function resolveStatic(url) {
-  let clean;
+export function resolveStatic(url: string): string | null {
+  let clean: string;
   try { clean = decodeURIComponent(url.split("?")[0]); } catch { return null; }
   const abs = clean === "/"
     ? path.join(paths.app, "index.html")
@@ -41,11 +44,12 @@ export function resolveStatic(url) {
  * @param {import("node:http").IncomingMessage} req
  * @param {import("node:http").ServerResponse} res
  */
-export async function serveStatic(req, res) {
+export async function serveStatic(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const abs = resolveStatic(req.url || "/");
   if (!abs) {
     res.writeHead(403, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ error: "fuera de app/ y docs/" }));
+    res.end(JSON.stringify({ error: text("outside") }));
+    return;
   }
   try {
     const data = await fs.readFile(abs);
@@ -53,6 +57,6 @@ export async function serveStatic(req, res) {
     res.end(data);
   } catch {
     res.writeHead(404, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: "no existe" }));
+    res.end(JSON.stringify({ error: text("notFound") }));
   }
 }

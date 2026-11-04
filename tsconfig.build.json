@@ -1,0 +1,19 @@
+{
+  // declaration: the main typecheck reads dist/*.d.ts and does not re-check the emit as JavaScript.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "outDir": "dist",
+    "rootDir": ".",
+    "declaration": true,
+    "sourceMap": false,
+    "strict": true,
+    "noImplicitAny": true,
+    "useUnknownInCatchVariables": false,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts", "harness/tools/**/*.ts"]
+}

@@ -1,21 +1,21 @@
-// Pruebas de arquitectura: cada decisión de docs/decisiones/ que se puede verificar, se verifica.
-// Si una de estas falla, no la ajustes para que pase: lee la decisión que cita.
+// Architecture tests: every decision in docs/decisiones/ that can be checked, is checked.
+// If one of these fails, do not change it so it passes: read the decision it cites.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { paths } from "../../src/config.js";
+import { paths } from "../../dist/src/config.js";
 
 const dirApp = path.join(paths.app, "js");
 const modulos = readdirSync(dirApp).filter((f) => f.endsWith(".js"));
 /** @param {string} f */
 const leer = (f) => readFileSync(path.join(dirApp, f), "utf8");
-/** Comentarios fuera: una regla citada en un comentario no es una violación. */
+/** Comments out: a rule cited in a comment is not a violation. */
 const sinComentarios = (/** @type {string} */ codigo) => codigo.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
-// Módulos sin lógica propia (decisión 0003): arranque, API y render puro. Todo otro módulo decide algo
-// y tiene su archivo de pruebas.
+// Modules with no logic of their own (decision 0003): startup, API, and pure render. Every other module decides something
+// and has its own test file.
 const SIN_LOGICA = ["main.js", "api.js", "chat.js"];
 
 test("ADR 0001: el chat importa solo rutas relativas, nunca un paquete de npm", () => {
@@ -26,9 +26,9 @@ test("ADR 0001: el chat importa solo rutas relativas, nunca un paquete de npm", 
   }
 });
 
-test("ADR 0001: el harness no declara dependencias para correr", () => {
+test("ADR 0001: el chat no importa paquetes; la única dependencia de ejecución es ajv", () => {
   const pkg = JSON.parse(readFileSync(path.join(paths.root, "package.json"), "utf8"));
-  assert.deepEqual(Object.keys(pkg.dependencies || {}), [], "solo devDependencies: ver docs/decisiones/0001");
+  assert.deepEqual(Object.keys(pkg.dependencies || {}), ["ajv"], "solo ajv: ver docs/decisiones/0009");
 });
 
 test("ADR 0010: ada es el bin, y los scripts de chat y terminal lo llaman", () => {
@@ -58,7 +58,7 @@ test("ADR 0003: el HTML es solo estructura, sin scripts ni estilos en línea", (
   assert.doesNotMatch(html, /<style\b|\sstyle=|\son[a-z]+=/i, "estilos o manejadores en línea");
 });
 
-/** Quita comentarios, textos entre comillas y flechas, para buscar comparaciones en el código. */
+/** Strips comments, quoted text, and arrows, so the search looks for comparisons in the code. */
 const soloCodigo = (/** @type {string} */ codigo) => sinComentarios(codigo)
   .replace(/`(?:\\.|[^`])*`|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'/g, '""').replace(/=>/g, "");
 
@@ -75,8 +75,8 @@ test("ADR 0003: main.js y los render*() no comparan datos; solo siguen lo que ca
 test("ADR 0004: cada export de src/, harness/tools/ y app/js/ tiene su bloque JSDoc", () => {
   const fuentes = [
     ...modulos.map((f) => path.join(dirApp, f)),
-    path.join(paths.root, "harness", "tools", "index.js"),
-    ...buscarJs(path.join(paths.root, "src")),
+    path.join(paths.root, "harness", "tools", "index.ts"),
+    ...buscarExt(path.join(paths.root, "src"), ".ts"),
   ];
   for (const archivo of fuentes) {
     const codigo = readFileSync(archivo, "utf8");
@@ -87,8 +87,8 @@ test("ADR 0004: cada export de src/, harness/tools/ y app/js/ tiene su bloque JS
   }
 });
 
-/** @param {string} d @returns {string[]} */
-function buscarJs(d) {
+/** @param {string} d @param {string} ext @returns {string[]} */
+function buscarExt(d, ext) {
   return readdirSync(d, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? buscarJs(path.join(d, e.name)) : e.name.endsWith(".js") ? [path.join(d, e.name)] : []);
+    e.isDirectory() ? buscarExt(path.join(d, e.name), ext) : e.name.endsWith(ext) ? [path.join(d, e.name)] : []);
 }

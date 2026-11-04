@@ -1,12 +1,12 @@
-// Trazabilidad (decisión 0007): cada criterio de aceptación tiene una prueba que lo nombra.
-// La matriz completa: npm run trazabilidad
+// Traceability (decision 0007): each acceptance criterion has a test that names it.
+// The full matrix: npm run trazabilidad
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { trazabilidad } from "../trazabilidad.js";
-import { paths } from "../../src/config.js";
+import { paths } from "../../dist/src/config.js";
 
 const t = trazabilidad();
 
@@ -31,12 +31,12 @@ test("casos de uso: cada uno tiene actor, objetivo, flujo principal y criterios"
   const dir = path.join(paths.docs, "casos-de-uso");
   for (const f of readdirSync(dir).filter((x) => /^CU-\d{2}.*\.md$/.test(x))) {
     const texto = readFileSync(path.join(dir, f), "utf8");
-    for (const seccion of ["**Actor:**", "**Objetivo:**", "## Flujo principal", "## Criterios de aceptación"]) {
+    for (const seccion of ["**Actor:**", "**Goal:**", "## Main flow", "## Acceptance criteria"]) {
       assert.ok(texto.includes(seccion), `${f}: falta ${seccion}`);
     }
   }
 });
 
 test("casos de uso: un criterio manual dice cómo verificarlo", () => {
-  for (const f of t.filas.filter((x) => x.manual)) assert.match(f.texto, /Verificación:/, f.id);
+  for (const f of t.filas.filter((x) => x.manual)) assert.match(f.texto, /Verification:/, f.id);
 });

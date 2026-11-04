@@ -1,35 +1,35 @@
-# 0008. Un agente es un archivo y una entrada en routing.json
+# 0008. An agent is a file and an entry in routing.json
 
-**Estado:** aceptada, octubre de 2026.
+**Status:** accepted, October 2026.
 
-## Contexto
+## Context
 
-Agregar un subagente exigía tocar tres lugares: su prompt, `routing.json` y la lista de agentes escrita a mano dentro de `src/harness.js`. Olvidar el tercero dejaba un agente que el modelo no podía pedir. Además todos los subagentes usaban el modelo rápido, también para implementar código.
+Adding a subagent meant touching three places: its prompt, `routing.json`, and the agent list written by hand inside `src/harness.js`. Forgetting the third left an agent the model could not ask for. Also, every subagent used the fast model, including the one that writes code.
 
-## Decisión
+## Decision
 
-- Un agente es `harness/agents/<nombre>.md`, con frontmatter `name` y `description` y el prompt de sistema en el cuerpo.
-- `routing.json` → `agents.<nombre>` declara qué herramientas ve, su tope de iteraciones y su modelo: `"fast"` (por defecto) o `"main"`.
-- La herramienta `spawn_agent` se arma en cada turno desde ese índice: nombre y descripción de cada agente declarado. Es el mismo patrón que los skills: índice adentro, contenido afuera.
-- Solo el agente principal lanza subagentes. Un subagente no puede lanzar otro.
-- Los mismos roles se ofrecen a Claude Code en `.claude/agents/`, como envoltorios que leen el archivo de `harness/agents/`. El prompt vive en un solo lugar.
+- An agent is `harness/agents/<name>.md`, with `name` and `description` frontmatter and the system prompt in the body.
+- `routing.json` → `agents.<name>` declares which tools it sees, its iteration cap, and its model: `"fast"` (the default) or `"main"`.
+- The `spawn_agent` tool is built each turn from that index: name and description of each declared agent. It is the same pattern as skills: the index is inside, the content is outside.
+- Only the main agent spawns subagents. A subagent cannot spawn another.
+- The same roles are offered to Claude Code in `.claude/agents/`, as wrappers that read the file in `harness/agents/`. The prompt lives in one place.
 
-| Agente | Para qué | Herramientas | Modelo |
+| Agent | What it is for | Tools | Model |
 |---|---|---|---|
-| `researcher` | Explorar y resumir | leer, listar, web | rápido |
-| `reviewer` | Revisar un cambio concreto | leer, listar, comandos | rápido |
-| `frontend` | Implementar pantallas con casos de uso y pruebas primero | leer, listar, escribir, comandos, skills | principal |
-| `qa` | Revisar el proyecto entero contra decisiones, casos de uso y pruebas | leer, listar, comandos, skills | principal |
+| `researcher` | Explore and summarize | read, list, web | fast |
+| `reviewer` | Review one concrete change | read, list, commands | fast |
+| `frontend` | Build screens with use cases and tests first | read, list, write, commands, skills | main |
+| `qa` | Review the whole project against decisions, use cases, and tests | read, list, commands, skills | main |
 
-## Consecuencias
+## Consequences
 
-- Agregar un agente es un archivo y una entrada. Nada de código.
-- Cada agente nuevo suma su descripción a la definición de `spawn_agent`, que el modelo lee en cada llamada. Por eso las descripciones son de una línea.
+- Adding an agent is one file and one entry. No code.
+- Each new agent adds its description to the `spawn_agent` definition, which the model reads on every call. That is why descriptions are one line.
 
-## Se verifica en
+## Checked by
 
-`tests/unit/agentes.test.js`: cada agente de `routing.json` tiene su archivo con `name` y `description`, usa solo herramientas que existen, y aparece en `spawn_agent`.
+`tests/unit/agentes.test.js`: each agent in `routing.json` has its file with `name` and `description`, uses only tools that exist, and appears in `spawn_agent`.
 
-## Cuándo revisarla
+## When to revisit
 
-Si un agente necesita algo que no es un prompt más herramientas (por ejemplo, otro proveedor o un loop distinto).
+If an agent needs something that is not a prompt plus tools (for example, another provider or a different loop).

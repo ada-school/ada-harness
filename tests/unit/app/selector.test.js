@@ -1,5 +1,5 @@
-// CU-02 Elegir con qué modelo habla. Lógica pura de app/js/selector.js.
-// Los datos tienen la forma real de GET /api/providers.
+// CU-02 Choose which model to talk to. Pure logic from app/js/selector.js.
+// The data has the real shape of GET /api/providers.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -21,7 +21,7 @@ test("CU-02.1 Claude y Gemini: con clave se eligen y muestran su modelo; sin cla
   const [base] = buildOptions(proveedores);
   assert.deepEqual(base.options, [
     { value: "anthropic|", label: "Claude · claude-sonnet-5-5", disabled: false },
-    { value: "gemini|", label: "Gemini · gemini-3.8-flash (falta GEMINI_API_KEY)", disabled: true },
+    { value: "gemini|", label: "Gemini · gemini-3.8-flash (missing GEMINI_API_KEY)", disabled: true },
   ]);
 });
 
@@ -29,15 +29,15 @@ test("CU-02.2 Ollama: un grupo con su host, cada modelo marcado local, nube o si
   const ollama = buildOptions(proveedores)[1];
   assert.equal(ollama.label, "Ollama · http://localhost:11434");
   assert.deepEqual(ollama.options.map((o) => [o.label, o.disabled]), [
-    ["qwen3:8b · 8.2B (local, gratis)", false],
-    ["llava:7b · 7B (no usa herramientas)", true],
-    ["gpt-oss:120b-cloud · 116.8B (nube, requiere cuenta)", false],
+    ["qwen3:8b · 8.2B (local, free)", false],
+    ["llava:7b · 7B (does not use tools)", true],
+    ["gpt-oss:120b-cloud · 116.8B (cloud, account required)", false],
   ]);
 });
 
 test("CU-02.3 sin Ollama, una opción deshabilitada dice cómo instalarlo y arrancarlo", () => {
   const grupos = buildOptions([sinOllama(proveedores[2])]);
-  assert.deepEqual(grupos[1].options, [{ label: 'No detectado: instala Ollama y corre "ollama serve"', disabled: true }]);
+  assert.deepEqual(grupos[1].options, [{ label: 'Not detected: install Ollama and run "ollama serve"', disabled: true }]);
 });
 
 test("CU-02.4 se mantiene la actual, luego la guardada, luego la del servidor; nunca una deshabilitada", () => {

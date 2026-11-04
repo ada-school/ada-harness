@@ -1,11 +1,11 @@
-// Herramientas: la sandbox. Lo que el modelo pide nunca debe salir de su carpeta ni leer secretos.
+// Tools: the sandbox. What the model asks for must never leave its folder or read secrets.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { tools, definitions, inside, resolveReadable, resolveWritable } from "../../harness/tools/index.js";
-import { paths } from "../../src/config.js";
+import { tools, definitions, inside, resolveReadable, resolveWritable } from "../../dist/harness/tools/index.js";
+import { paths } from "../../dist/src/config.js";
 import { tempWorkspace, tempMemory } from "../helpers/workspace.js";
 
 /** @type {Awaited<ReturnType<typeof tempWorkspace>>} */
@@ -22,7 +22,7 @@ test("inside: acepta rutas dentro de la carpeta", () => {
 
 test("inside: bloquea ../, rutas absolutas y carpetas hermanas con el mismo prefijo", async () => {
   await fs.mkdir(ws.dir + "-hermano", { recursive: true });
-  const hermana = "../" + path.basename(ws.dir) + "-hermano/x.txt";   // empieza con el nombre del workspace
+  const hermana = "../" + path.basename(ws.dir) + "-hermano/x.txt";   // starts with the workspace name
   for (const p of ["../x", "a/../../x", hermana, "/etc/passwd"]) {
     assert.throws(() => inside(ws.dir, p), /Ruta fuera de/, p);
   }
@@ -31,7 +31,7 @@ test("inside: bloquea ../, rutas absolutas y carpetas hermanas con el mismo pref
 test("lectura desde la raíz del repo: permitida, salvo secretos y git", () => {
   assert.equal(resolveReadable("/AGENTS.md"), path.join(paths.root, "AGENTS.md"));
   assert.equal(resolveReadable("/.gitignore"), path.join(paths.root, ".gitignore"));
-  for (const p of ["/.env", "/.env.local", "/.git/config", "/.git"]) {
+  for (const p of ["/.env", "/.env.local", "/.git/config", "/.git", "/.sessions/sessions.json"]) {
     assert.throws(() => resolveReadable(p), /Archivo protegido/, p);
   }
   assert.throws(() => resolveReadable("/../fuera.txt"), /Ruta fuera de/);
@@ -80,7 +80,7 @@ test("write_memory: solo dentro de areas/, ni siquiera con ../ (y las pruebas es
 test("read_memory y el índice de memoria siguen a ADA_MEMORY", async () => {
   await tools.write_memory.run({ path: "areas/tema.md", content: "---\nname: tema\ndescription: una prueba\n---\n- [stated] x" });
   assert.match(await tools.read_memory.run({ path: "areas/tema.md" }), /\[stated\] x/);
-  const { memoryIndex } = await import("../../src/context.js");
+  const { memoryIndex } = await import("../../dist/src/context.js");
   assert.match(await memoryIndex(), /- areas\/tema\.md: una prueba/);
 });
 
@@ -122,8 +122,37 @@ test("web_fetch: una redirección hacia la red interna también se bloquea", asy
 test("run_command: corre en el workspace y sin shell", async () => {
   const cwd = await tools.run_command.run({ program: process.execPath, args: ["-e", "console.log(process.cwd())"] });
   assert.equal(await fs.realpath(cwd.trim()), await fs.realpath(ws.dir));
-  // sin shell, "&&" no encadena nada: el programa con ese nombre no existe
+  // with no shell, "&&" chains nothing: a program with that name does not exist
   assert.match(await tools.run_command.run({ program: "echo hola && echo chao" }), /^error/);
+});
+
+test("run_command: no lee ni escribe fuera del workspace", async () => {
+  const secreto = path.join(path.dirname(ws.dir), "ada-secreto.txt");
+  await fs.writeFile(secreto, "SECRETO-FUERA");
+  const dentro = path.join(ws.dir, "nota.txt");
+  await fs.writeFile(dentro, "dentro");
+  const leer = (archivo) => `try{process.stdout.write(require("fs").readFileSync(${JSON.stringify(archivo)},"utf8"))}catch(e){process.stdout.write("DENIED")}`;
+  try {
+    const fuera = await tools.run_command.run({ program: process.execPath, args: ["-e", leer(secreto)] });
+    const delRepo = await tools.run_command.run({ program: process.execPath, args: ["-e", leer(path.join(paths.root, "package.json"))] });
+    const adentro = await tools.run_command.run({ program: process.execPath, args: ["-e", leer(dentro)] });
+    const escrito = await tools.run_command.run({
+      program: process.execPath,
+      args: ["-e", `try{require("fs").writeFileSync(${JSON.stringify(secreto)},"pwn");process.stdout.write("WROTE")}catch(e){process.stdout.write("DENIED")}`],
+    });
+    assert.equal(adentro.trim(), "dentro");
+    // Seatbelt ships with macOS. Linux still runs in the directory; this assertion waits for bubblewrap.
+    if (process.platform === "darwin") {
+      assert.equal(fuera.includes("SECRETO-FUERA"), false, fuera);
+      assert.match(fuera, /DENIED/);
+      assert.match(delRepo, /DENIED/);
+      assert.equal(delRepo.includes("ada-harness"), false, delRepo);
+      assert.match(escrito, /DENIED/);
+      assert.equal(await fs.readFile(secreto, "utf8"), "SECRETO-FUERA");
+    }
+  } finally {
+    await fs.rm(secreto, { force: true });
+  }
 });
 
 test("load_skill: carga por nombre y no sale de harness/skills", async () => {

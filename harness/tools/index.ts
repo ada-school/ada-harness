@@ -1,25 +1,28 @@
-// Registro de herramientas.
-// Cada herramienta es dos cosas: una definición JSON (lo único que el modelo ve)
-// y una función (lo que el harness ejecuta cuando el modelo "pide" la herramienta).
-// El modelo nunca ejecuta nada. Propone. Esto ejecuta.
+// Edit harness/tools/index.ts. Node runs the compiled file under dist/. Rebuild with npm run build.
+// Tool registry.
+// Each tool is two things: a JSON definition (the only thing the model sees)
+// and a function (what the harness runs when the model "asks" for the tool).
+// The model never runs anything. It proposes. This runs.
 
-import { promises as fs } from "node:fs";
+import { promises as fs, realpathSync } from "node:fs";
 import dns from "node:dns";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { paths, isProtected } from "../../src/config.js";
+import type { Tool, ToolDefinition } from "../../src/types.js";
 
 const exec = promisify(execFile);
 
 /**
- * Resuelve `p` dentro de `base` y falla si se sale. Compara carpetas completas, no prefijos de
- * texto: "workspace-otro" empieza con "workspace" pero está afuera.
- * @param {string} base carpeta permitida, absoluta
- * @param {string} p ruta pedida por el modelo
+ * Resolves `p` inside `base` and fails if it escapes. Compares whole folders, not text
+ * prefixes: "workspace-otro" starts with "workspace" but it is outside.
+ * @param {string} base allowed folder, absolute
+ * @param {string} p path the model asked for
  */
-export function inside(base, p) {
+export function inside(base: string, p: string): string {
   const abs = path.resolve(base, p);
   const rel = path.relative(base, abs);
   if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(`Ruta fuera de ${path.basename(base)}/: ${p}`);
@@ -27,12 +30,12 @@ export function inside(base, p) {
 }
 
 /**
- * Rutas que empiezan con "/" se leen desde la raíz del repo; el resto, desde el workspace.
- * Los secretos (.env) y la carpeta .git nunca se leen: lo que el modelo lee viaja a su proveedor.
- * Vale también dentro del workspace, que con ADA_WORKSPACE puede ser un proyecto real.
+ * Paths that start with "/" are read from the repo root; the rest, from the workspace.
+ * Secrets (.env) and the .git folder are never read: what the model reads travels to its provider.
+ * This also holds inside the workspace, which with ADA_WORKSPACE can be a real project.
  * @param {string} p
  */
-export function resolveReadable(p) {
+export function resolveReadable(p: string): string {
   const base = p.startsWith("/") ? paths.root : paths.workspace;
   const abs = inside(base, p.replace(/^\/+/, "") || ".");
   if (isProtected(path.relative(base, abs))) throw new Error(`Archivo protegido: ${p}`);
@@ -40,24 +43,24 @@ export function resolveReadable(p) {
 }
 
 /**
- * Dónde puede escribir el agente: dentro del workspace y nunca sobre .env ni .git.
+ * Where the agent may write: inside the workspace and never over .env or .git.
  * @param {string} p
  */
-export function resolveWritable(p) {
+export function resolveWritable(p: string): string {
   const abs = inside(paths.workspace, p);
   if (isProtected(path.relative(paths.workspace, abs))) throw new Error(`Archivo protegido: ${p}`);
   return abs;
 }
 
 /**
- * Rechaza enlaces simbólicos en cada tramo existente, además de validar la ruta léxica.
- * No sustituye un sandbox del sistema operativo ni protege frente a cambios concurrentes.
+ * Rejects symbolic links on every existing segment, besides checking the lexical path.
+ * It does not replace an operating-system sandbox and it does not protect against concurrent changes.
  * @param {string} base
  * @param {string} abs
  * @param {{ createBase?: boolean }} [opts]
  * @returns {Promise<string>}
  */
-async function rejectSymlinkTraversal(base, abs, { createBase = false } = {}) {
+async function rejectSymlinkTraversal(base: string, abs: string, { createBase = false }: { createBase?: boolean } = {}): Promise<string> {
   if (createBase) await fs.mkdir(base, { recursive: true });
   const root = await fs.realpath(base);
   const relative = path.relative(path.resolve(base), abs);
@@ -72,7 +75,7 @@ async function rejectSymlinkTraversal(base, abs, { createBase = false } = {}) {
       const rel = path.relative(root, real);
       if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error("Ruta fuera de la carpeta permitida");
     } catch (error) {
-      if (/** @type {NodeJS.ErrnoException} */ (error).code === "ENOENT") break;
+      if (error.code === "ENOENT") break;
       throw error;
     }
   }
@@ -85,30 +88,30 @@ async function rejectSymlinkTraversal(base, abs, { createBase = false } = {}) {
  * @param {{ createBase?: boolean }} [opts]
  * @returns {Promise<string>}
  */
-async function confined(base, p, opts) {
+async function confined(base: string, p: string, opts?: { createBase?: boolean }): Promise<string> {
   const abs = inside(base, p);
   if (isProtected(path.relative(base, abs))) throw new Error(`Archivo protegido: ${p}`);
   return rejectSymlinkTraversal(base, abs, opts);
 }
 
 /** @param {string} p */
-async function readablePath(p) {
+async function readablePath(p: string): Promise<string> {
   const base = p.startsWith("/") ? paths.root : paths.workspace;
   return rejectSymlinkTraversal(base, resolveReadable(p));
 }
 
 /** @param {string} p */
-async function writablePath(p) {
+async function writablePath(p: string): Promise<string> {
   return rejectSymlinkTraversal(paths.workspace, resolveWritable(p), { createBase: true });
 }
 
 /**
- * ¿Es una dirección de esta máquina o de una red privada? (loopback, 10/8, 172.16/12, 192.168/16,
- * 169.254/16 de metadatos de nube, 100.64/10, y sus equivalentes en IPv6)
+ * Is this an address of this machine or of a private network? (loopback, 10/8, 172.16/12, 192.168/16,
+ * 169.254/16 cloud metadata, 100.64/10, and their IPv6 equivalents)
  * @param {string} ip
  * @returns {boolean}
  */
-export function esDireccionInterna(ip) {
+export function esDireccionInterna(ip: string): boolean {
   const v = ip.toLowerCase();
   if (net.isIPv6(v)) {
     if (v.startsWith("::ffff:")) return esDireccionInterna(v.slice(7));
@@ -120,13 +123,13 @@ export function esDireccionInterna(ip) {
 }
 
 /**
- * web_fetch solo sale a internet (decisión 0006): http o https, y un host que no resuelva a esta
- * máquina ni a la red interna. Una página leída no puede llevar al agente a tu router ni a tu API local.
+ * web_fetch only goes out to the internet (decision 0006): http or https, and a host that does not
+ * resolve to this machine or the internal network. A page it reads cannot lead the agent to your router or your local API.
  * @param {string} texto
  * @returns {Promise<URL>}
  */
-export async function urlPublica(texto) {
-  let url;
+export async function urlPublica(texto: string): Promise<URL> {
+  let url: URL;
   try { url = new URL(texto); } catch { throw new Error(`URL no permitida: ${texto}`); }
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`URL no permitida: ${texto}`);
   const nombre = url.hostname.replace(/^\[|\]$/g, "");
@@ -135,8 +138,66 @@ export async function urlPublica(texto) {
   return url;
 }
 
+/** Roots a command must not read. The workspace, and the program's install prefix, are opened again after this. */
+const DENIED_ROOTS = ["/Users", "/private/tmp", "/private/var/folders", "/Volumes"];
+
+/**
+ * Seatbelt profile for `run_command`. System libraries stay readable. The user's files do not.
+ * The last matching rule wins, so the workspace allow comes after the deny.
+ * @param {string} workspace absolute real path of the working folder
+ * @param {string | null} prefix install prefix, when it sits under a denied root
+ */
+function commandProfile(workspace: string, prefix: string | null): string {
+  const ws = sbQuote(workspace);
+  const extra = prefix ? `\n(allow file-read* (subpath ${sbQuote(prefix)}))` : "";
+  return `(version 1)
+(deny default)
+(import "system.sb")
+(allow process*)
+(deny file-read* (subpath "/Users") (subpath "/private/tmp") (subpath "/private/var/folders") (subpath "/Volumes"))
+(allow file-read* file-write* (subpath ${ws}))${extra}
+(deny file-write* (subpath "/"))
+(allow file-write* (subpath ${ws}))
+`;
+}
+
+/** @param {string} p */
+function sbQuote(p: string): string {
+  if (/[()\\"]/.test(p)) throw new Error(`Ruta no admitida por el sandbox: ${p}`);
+  return `"${p}"`;
+}
+
+/**
+ * Install tree of `program`, when that tree lives under a denied root (nvm, a temp binary).
+ * A program in `/bin` or `/usr` needs nothing extra: the system profile already allows it.
+ * @param {string} program
+ * @returns {string | null}
+ */
+function installPrefix(program: string): string | null {
+  const real = resolveProgram(program);
+  if (!real) return null;
+  const dir = path.dirname(real);
+  let prefix = path.basename(dir) === "bin" ? path.dirname(dir) : dir;
+  const home = os.homedir();
+  if (prefix === home || prefix.split(path.sep).length <= 3) prefix = dir;
+  if (prefix === "/" || prefix === home || DENIED_ROOTS.includes(prefix)) return null;
+  if (!DENIED_ROOTS.some((root) => prefix.startsWith(root + path.sep))) return null;
+  return prefix;
+}
+
+/** @param {string} program @returns {string | null} */
+function resolveProgram(program: string): string | null {
+  const candidates = program.includes("/") || program.includes("\\")
+    ? [program]
+    : (process.env.PATH || "").split(path.delimiter).filter(Boolean).map((dir) => path.join(dir, program));
+  for (const candidate of candidates) {
+    try { return realpathSync(candidate); } catch { /* next directory on PATH */ }
+  }
+  return null;
+}
+
 /** @type {Record<string, import("../../src/types.js").Tool>} */
-export const tools = {
+export const tools: Record<string, Tool> = {
   list_dir: {
     definition: {
       name: "list_dir",
@@ -188,7 +249,13 @@ export const tools = {
     },
     async run({ program, args = [] }) {
       try {
-        const { stdout, stderr } = await exec(program, args, { cwd: paths.workspace, timeout: 60000, maxBuffer: 1e6 });
+        const cwd = await fs.realpath(paths.workspace);
+        // ponytail: macOS Seatbelt, not a container. A Linux image cannot run the host binary, and the tests must not need a daemon. Linux stays a directory plus a timeout until bubblewrap is wired.
+        const file = process.platform === "darwin" ? "sandbox-exec" : program;
+        const argv = process.platform === "darwin"
+          ? ["-p", commandProfile(cwd, installPrefix(program)), program, ...args]
+          : args;
+        const { stdout, stderr } = await exec(file, argv, { cwd, timeout: 60000, maxBuffer: 1e6 });
         return (stdout + (stderr ? "\n[stderr]\n" + stderr : "")).trim() || "(sin salida)";
       } catch (e) {
         return `error (${e.code ?? "?"}): ${e.stderr || e.message}`;
@@ -203,9 +270,9 @@ export const tools = {
       input_schema: { type: "object", properties: { url: { type: "string", minLength: 8, maxLength: 2048 } }, required: ["url"], additionalProperties: false },
     },
     async run({ url }) {
-      // las redirecciones se siguen a mano para revisar cada destino
+      // redirects are followed by hand so each destination can be checked
       let destino = await urlPublica(url);
-      let res;
+      let res: Awaited<ReturnType<typeof fetch>>;
       for (let saltos = 0; ; saltos++) {
         res = await fetch(destino, { headers: { "user-agent": "ada-harness/0.1" }, redirect: "manual" });
         const siguiente = res.status >= 300 && res.status < 400 && res.headers.get("location");
@@ -257,15 +324,15 @@ export const tools = {
     },
   },
 
-  // spawn_agent se registra en src/harness.js porque necesita el loop.
+  // spawn_agent is registered in src/harness.ts because it needs the loop.
 };
 
 /**
- * Definiciones que ve el modelo; con `names`, solo esas (los subagentes ven un subconjunto).
+ * Definitions the model sees; with `names`, only those (subagents see a subset).
  * @param {string[] | null} [names]
  * @returns {import("../../src/types.js").ToolDefinition[]}
  */
-export function definitions(names) {
+export function definitions(names?: string[] | null): ToolDefinition[] {
   return Object.values(tools)
     .filter((t) => !names || names.includes(t.definition.name))
     .map((t) => t.definition);

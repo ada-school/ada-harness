@@ -1,12 +1,12 @@
 ---
 name: documentar-funcion
-description: Documenta funciones JS. Cárgalo si piden documentar.
+description: Documents JS functions. Load it when they ask to document.
 ---
-# Documentar una función
+# Document a function
 
-1. Lee el archivo con read_file.
-2. Sobre cada función exportada, un bloque JSDoc:
-   @param con tipo, @returns y un @example real.
-3. Caso borde sin manejar: no lo arregles,
-   anótalo en RIESGOS.md.
-4. Guarda con write_file.
+1. Read the file with read_file.
+2. Above each exported function, a JSDoc block:
+   @param with a type, @returns, and a real @example.
+3. An unhandled edge case: do not fix it,
+   note it in RIESGOS.md.
+4. Save with write_file.

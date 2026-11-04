@@ -1,34 +1,35 @@
-# CU-01 Conversar con el agente
+# CU-01 Talk to the agent
 
-**Actor:** quien usa el chat, en un taller o en su máquina.
-**Objetivo:** pedirle algo al agente y leer su respuesta.
-**Precondiciones:** el servidor corre y hay al menos un modelo disponible (CU-02).
-**Disparador:** la persona escribe en el campo de texto.
+**Actor:** the person using the chat, in a workshop or on their own machine.
+**Goal:** ask the agent for something and read its reply.
+**Preconditions:** the server is running and at least one model is available (CU-02).
+**Trigger:** the person types in the text field.
 
-## Flujo principal
+## Main flow
 
-1. La persona escribe un mensaje y presiona Enter.
-2. El chat muestra su mensaje y "pensando…", y deshabilita Enviar.
-3. El servidor corre el turno completo: puede ser varias llamadas al modelo y varias herramientas.
-4. El chat reemplaza "pensando…" por la respuesta y actualiza el inspector (CU-03).
-5. Enviar vuelve a estar disponible y el cursor vuelve al campo.
+1. The person writes a message and presses Enter.
+2. The chat shows their message and "thinking…", and disables Send.
+3. The server runs the whole turn: it can be several calls to the model and several tools.
+4. The chat replaces "thinking…" with the reply as the pieces arrive, and updates the inspector when the turn ends (CU-03).
+5. Send is available again and the cursor returns to the field.
 
-## Flujos alternos
+## Alternate flows
 
-- **2a.** Si el campo está vacío o solo tiene espacios, no pasa nada.
-- **3a.** Si el servidor responde con error o no responde, el chat muestra el motivo y la persona puede volver a escribir.
+- **2a.** If the field is empty or only spaces, nothing happens.
+- **3a.** If the server replies with an error or does not reply, the chat shows the reason and the person can type again.
 
-## Criterios de aceptación
+## Acceptance criteria
 
-- **CU-01.1** Dado texto en el campo, cuando la persona presiona Enter, entonces el mensaje se envía; con Shift+Enter, o mientras compone texto con un método de entrada (IME), Enter agrega un salto de línea y no envía.
-- **CU-01.2** Dado un campo vacío o con solo espacios, cuando la persona intenta enviar, entonces no se envía nada; con texto, se envía sin los espacios de los extremos.
-- **CU-01.3** Dada una respuesta del modelo que contiene HTML, cuando se muestra, entonces aparece como texto literal y no se interpreta.
-- **CU-01.4** Dado que el servidor responde con error o no responde, cuando termina la espera, entonces la conversación muestra "error: " y el motivo.
-- **CU-01.5** Dado un segundo mensaje en la misma conversación, cuando llega al modelo, entonces incluye completo el turno anterior, herramientas incluidas.
-- **CU-01.6** Dado un mensaje largo, cuando la persona escribe, entonces el campo crece con el texto hasta 160 px y después hace scroll.
-- **CU-01.7** (manual) Dado un mensaje enviado, mientras llega la respuesta, entonces la conversación muestra "pensando…" y Enviar queda deshabilitado. Verificación: con Ollama corriendo, enviar un mensaje y mirar el botón antes de la respuesta.
+- **CU-01.1** Given text in the field, when the person presses Enter, then the message is sent; with Shift+Enter, or while composing text with an input method (IME), Enter adds a line break and does not send.
+- **CU-01.2** Given an empty field or one with only spaces, when the person tries to send, then nothing is sent; with text, it is sent without the spaces at the ends.
+- **CU-01.3** Given a model reply that contains HTML, when it is shown, then it appears as literal text and is not interpreted.
+- **CU-01.4** Given that the server replies with an error or does not reply, when the wait ends, then the conversation shows "error: " and the reason.
+- **CU-01.5** Given a second message in the same conversation, when it reaches the model, then it includes the previous turn in full, tools included.
+- **CU-01.6** Given a long message, when the person types, then the field grows with the text up to 160 px and then scrolls.
+- **CU-01.7** (manual) Given a sent message, while the reply is arriving, then the conversation shows "thinking…" and Send stays disabled. Verification: with Ollama running, send a message and look at the button before the reply.
+- **CU-01.8** Given a reply that arrives in pieces, when each piece arrives, then the conversation shows the text so far, HTML included as literal text; when the turn ends, the trace is available and the text already shown stays.
+- **CU-01.9** Given a finished turn, when this browser sends the next message to a new server process, then that message uses the same session and the model receives the previous turn.
 
-## Fuera de alcance
+## Out of scope
 
-- Respuestas en streaming: el turno llega completo.
-- Guardar la conversación entre reinicios del servidor.
+- Redrawing old messages on screen after a reload. The model keeps them; the page starts empty.

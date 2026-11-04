@@ -1,8 +1,9 @@
-// El loop. Esto es lo que convierte una llamada al modelo en un agente:
-//   1. ensamblar contexto  2. llamar  3. si pide herramientas, ejecutarlas y volver a 2
-//   + compactar cuando la ventana se acerca al presupuesto (src/window.js)
-//   + subagentes: el mismo loop con un contexto vacío y su propio prompt
-// El loop no sabe con qué modelo habla: callModel() delega en un proveedor (src/providers/).
+// Edit src/harness.ts. Node runs the compiled file under dist/. Rebuild with npm run build.
+// The loop. This is what turns a model call into an agent:
+//   1. assemble context  2. call  3. if it asks for tools, run them and go back to 2
+//   + compact when the window nears the budget (src/window.ts)
+//   + subagents: the same loop with an empty context and its own prompt
+// The loop does not know which model it talks to: callModel() delegates to a provider (src/providers/).
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,8 @@ import { loadRouting, assembleSystem, agentsIndex, estimateTokens, historyReport
 import { budgetFor, planCompaction, compact, maybeOffload } from "./window.js";
 import { resolveProvider } from "./providers/index.js";
 import { validateInput } from "./validation.js";
+import { text } from "./text.js";
+import type { CallArgs, Layer, Message, ModelResponse, Provider, Routing, ToolDefinition, ToolResultBlock, ToolUseBlock, Trace } from "./types.js";
 
 /** @typedef {import("./types.js").Message} Message */
 /** @typedef {import("./types.js").Provider} Provider */
@@ -18,21 +21,28 @@ import { validateInput } from "./validation.js";
 /** @typedef {import("./types.js").Trace} Trace */
 
 /**
- * La llamada. Lo único que el modelo "hace". El proveedor traduce ida y vuelta;
- * entra y sale en formato interno: bloques text, tool_use y tool_result.
+ * The call. The only thing the model "does". The provider translates both ways;
+ * what goes in and out is the internal format: text, tool_use, and tool_result blocks.
  * @param {Provider} provider
  * @param {import("./types.js").CallArgs} args
  */
-function callModel(provider, args) {
+function callModel(provider: Provider, args: CallArgs): Promise<ModelResponse> {
   return provider.call(args);
 }
 
 /**
- * El loop. Sirve para el agente principal y para subagentes.
- * @param {{ messages: Message[], agentName?: string | null, routing: Routing, trace: Trace, provider: Provider }} args
+ * The loop. It serves the main agent and the subagents.
+ * @param {{ messages: Message[], agentName?: string | null, routing: Routing, trace: Trace, provider: Provider, onText?: (delta: string) => void }} args
  * @returns {Promise<{ text: string, messages: Message[] }>}
  */
-export async function runAgent({ messages, agentName = null, routing, trace, provider }) {
+export async function runAgent({ messages, agentName = null, routing, trace, provider, onText }: {
+  messages: Message[];
+  agentName?: string | null;
+  routing: Routing;
+  trace: Trace;
+  provider: Provider;
+  onText?: (delta: string) => void;
+}): Promise<{ text: string; messages: Message[] }> {
   const sys = await assembleSystem({ routing, agentName });
   const toolDefs = await toolDefsFor(routing, agentName);
   const maxLoops = agentName ? routing.agents[agentName]?.maxToolLoops ?? 10 : routing.maxToolLoops;
@@ -43,7 +53,7 @@ export async function runAgent({ messages, agentName = null, routing, trace, pro
   let avisado = false;
 
   for (let loop = 0; loop < maxLoops; loop++) {
-    // ¿la ventana se acerca al presupuesto? decidir antes de llamar.
+    // Is the window nearing the budget? Decide before calling.
     const history = historyReport(messages).reduce((a, l) => a + l.tokens, 0);
     const plan = planCompaction({ fixed, history, budget, compactAt: routing.compactAt });
     if (plan === "compact") messages = await compact(messages, { routing, trace, provider });
@@ -52,7 +62,11 @@ export async function runAgent({ messages, agentName = null, routing, trace, pro
       avisado = true;
     }
 
-    const r = await callModel(provider, { model, system: sys.system, messages, tools: toolDefs });
+    let streamed = false;
+    const r = await callModel(provider, {
+      model, system: sys.system, messages, tools: toolDefs,
+      ...(onText ? { onText: (delta: string) => { if (!delta) return; streamed = true; onText(delta); } } : {}),
+    });
     trace.calls++;
     trace.lastContext = {
       layers: sys.layers.concat([{ name: "toolDefinitions", tokens: estimateTokens(toolDefs) }], historyReport(messages)),
@@ -62,12 +76,14 @@ export async function runAgent({ messages, agentName = null, routing, trace, pro
 
     if (r.stop_reason !== "tool_use") {
       const text = r.content.map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join("\n");
+      // A provider that does not stream still reaches the terminal and the chat as one piece.
+      if (onText && !streamed && text) onText(text);
       return { text, messages };
     }
 
-    // El modelo pidió herramientas. El harness las ejecuta y pega los resultados.
+    // The model asked for tools. The harness runs them and appends the results.
     /** @type {import("./types.js").ToolResultBlock[]} */
-    const results = [];
+    const results: ToolResultBlock[] = [];
     for (const block of r.content) {
       if (block.type !== "tool_use") continue;
       const out = await runTool(block, { routing, trace, provider, budget, agentName });
@@ -76,64 +92,72 @@ export async function runAgent({ messages, agentName = null, routing, trace, pro
     }
     messages.push({ role: "user", content: results });
   }
-  return { text: "(se alcanzó el máximo de iteraciones del loop)", messages };
+  const text = "(se alcanzó el máximo de iteraciones del loop)";
+  if (onText) onText(text);
+  return { text, messages };
 }
 
 /**
- * Las herramientas que ve cada agente: las de routing.json. Solo el principal puede delegar.
+ * The tools each agent sees: the ones in routing.json. Only the main agent can delegate.
  * @param {Routing} routing
  * @param {string | null} agentName
  */
-async function toolDefsFor(routing, agentName) {
+async function toolDefsFor(routing: Routing, agentName: string | null): Promise<ToolDefinition[]> {
   const defs = definitions(agentName ? routing.agents[agentName]?.tools : null);
   if (!agentName) defs.push(spawnDefinition(await agentsIndex(routing)));
   return defs;
 }
 
 /**
- * Cuánto pesa cada capa fija del agente principal, sin llamar a ningún modelo (npm run capas).
- * Son las cifras que muestra el inspector en la primera llamada, antes del historial.
+ * How much each fixed layer of the main agent weighs, without calling a model (npm run capas).
+ * These are the figures the inspector shows on the first call, before the history.
  * @param {Routing} routing
  * @returns {Promise<import("./types.js").Layer[]>}
  */
-export async function fixedLayers(routing) {
+export async function fixedLayers(routing: Routing): Promise<Layer[]> {
   const { layers } = await assembleSystem({ routing });
   return layers.concat([{ name: "toolDefinitions", tokens: estimateTokens(await toolDefsFor(routing, null)) }]);
 }
 
 /**
- * Ejecuta una herramienta pedida por el modelo. Los errores vuelven como texto: el modelo
- * los lee y puede corregir el rumbo, en vez de cortar el turno.
+ * Runs a tool the model asked for. Errors come back as text: the model
+ * reads them and can correct course, instead of the turn being cut off.
  * @param {import("./types.js").ToolUseBlock} block
  * @param {{ routing: Routing, trace: Trace, provider: Provider, budget: number, agentName: string | null }} ctx
  */
-async function runTool(block, { routing, trace, provider, budget, agentName }) {
+async function runTool(block: ToolUseBlock, { routing, trace, provider, budget, agentName }: {
+  routing: Routing;
+  trace: Trace;
+  provider: Provider;
+  budget: number;
+  agentName: string | null;
+}): Promise<string> {
   try {
     if (block.name === "spawn_agent") {
       if (agentName) return "error: herramienta desconocida spawn_agent";
       const schema = spawnDefinition(await agentsIndex(routing)).input_schema;
       const errores = validateInput(block.input, schema);
-      if (errores.length) return `error: entrada inválida\n${errores.join("\n")}`;
-      return await maybeOffload(block.name, await spawnAgent(/** @type {{ agent: string, task: string }} */ (block.input), routing, trace, provider), routing, budget);
+      if (errores.length) return `error: ${text("invalidInput")}\n${errores.join("\n")}`;
+      return await maybeOffload(block.name, await spawnAgent(block.input as { agent: string; task: string }, routing, trace, provider), routing, budget);
     }
     const tool = tools[block.name];
     if (!tool) return `error: herramienta desconocida ${block.name}`;
     const errores = validateInput(block.input, tool.definition.input_schema);
-    if (errores.length) return `error: entrada inválida\n${errores.join("\n")}`;
+    if (errores.length) return `error: ${text("invalidInput")}\n${errores.join("\n")}`;
     return await maybeOffload(block.name, String(await tool.run(block.input)), routing, budget);
   } catch (e) {
     return `error: ${e.message}`;
   }
 }
 
-// --- subagente: contexto nuevo, mismo loop, informe de vuelta. ---
+// --- subagent: a fresh context, the same loop, a report back. ---
 /**
- * La herramienta spawn_agent, armada desde el índice de agentes (decisión 0008): agregar un agente
- * es un archivo en harness/agents/ y una entrada en routing.json, sin tocar este código.
+ * The spawn_agent tool, built from the agent index (decision 0008): adding an agent
+ * is a file in harness/agents/ and an entry in routing.json, without touching this code.
  * @param {{ name: string, description: string }[]} agentes
  * @returns {import("./types.js").ToolDefinition}
  */
-export function spawnDefinition(agentes) {
+export function spawnDefinition(agentes: { name: string; description: string }[]): ToolDefinition {
   return {
     name: "spawn_agent",
     description: "Lanza un subagente con un contexto vacío para una tarea acotada. Devuelve solo su informe final. Úsalo para investigar, revisar o implementar sin llenar este contexto. Agentes: "
@@ -148,13 +172,13 @@ export function spawnDefinition(agentes) {
 }
 
 /**
- * Qué modelo usa cada agente: el principal para el agente principal y para los que routing.json
- * marca con "model": "main"; el rápido para el resto.
+ * Which model each agent uses: the main one for the main agent and for those routing.json
+ * marks with "model": "main"; the fast one for the rest.
  * @param {Routing} routing
  * @param {Provider} provider
  * @param {string | null} agentName
  */
-export function modelFor(routing, provider, agentName) {
+export function modelFor(routing: Routing, provider: Provider, agentName: string | null): string {
   if (!agentName) return provider.model();
   return routing.agents[agentName]?.model === "main" ? provider.model() : provider.fastModel();
 }
@@ -165,10 +189,10 @@ export function modelFor(routing, provider, agentName) {
  * @param {Trace} trace
  * @param {Provider} provider
  */
-async function spawnAgent({ agent, task }, routing, trace, provider) {
+async function spawnAgent({ agent, task }: { agent: string; task: string }, routing: Routing, trace: Trace, provider: Provider): Promise<string> {
   if (!routing.agents[agent]) return `error: agente desconocido ${agent}`;
   /** @type {Trace} */
-  const child = { calls: 0, tools: [], events: [], lastContext: null };
+  const child: Trace = { calls: 0, tools: [], events: [], lastContext: null };
   const { text } = await runAgent({ messages: [{ role: "user", content: task }], agentName: agent, routing, trace: child, provider });
   trace.events.push({ type: "subagent", agent, calls: child.calls, tools: child.tools.length });
   trace.calls += child.calls;
@@ -176,22 +200,28 @@ async function spawnAgent({ agent, task }, routing, trace, provider) {
 }
 
 /**
- * Un turno completo: lo usan el servidor y la terminal.
- * @param {{ history: Message[], userText: string, provider?: string, model?: string }} args
+ * A complete turn: the server and the terminal both use it.
+ * @param {{ history: Message[], userText: string, provider?: string, model?: string, onText?: (delta: string) => void }} args
  * @returns {Promise<{ text: string, history: Message[], trace: Trace }>}
  */
-export async function turn({ history, userText, provider: nombre, model }) {
+export async function turn({ history, userText, provider: nombre, model, onText }: {
+  history: Message[];
+  userText: string;
+  provider?: string;
+  model?: string;
+  onText?: (delta: string) => void;
+}): Promise<{ text: string; history: Message[]; trace: Trace }> {
   const routing = await loadRouting();
   const provider = await resolveProvider(nombre, model);
   /** @type {Trace} */
-  const trace = { calls: 0, tools: [], events: [], lastContext: null, provider: provider.name, model: provider.model() };
+  const trace: Trace = { calls: 0, tools: [], events: [], lastContext: null, provider: provider.name, model: provider.model() };
   const messages = history.concat([{ role: "user", content: userText }]);
-  const { text, messages: next } = await runAgent({ messages, routing, trace, provider });
+  const { text, messages: next } = await runAgent({ messages, routing, trace, provider, onText });
   return { text, history: next, trace };
 }
 
-// `node src/harness.js "mensaje"` sigue funcionando: delega en src/cli.js.
-// No importa el servidor aquí: api.js importa este archivo, y un await a server.js no termina.
+// Running the compiled harness file delegates to src/cli.ts. The documented command is npm run cli.
+// Do not import the server here: src/http/api.ts imports this file, and an await of src/server.ts never finishes.
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   const { main } = await import("./cli.js");
   await main(process.argv.slice(2), { turn, fixedLayers, loadRouting, defaultCommand: "run" });

@@ -1,13 +1,13 @@
-// Adaptador de Ollama contra un servidor HTTP falso que imita su API (/api/tags, /api/show,
-// /api/chat). Sin Ollama instalado y sin red externa.
+// Ollama adapter against a fake HTTP server that imitates its API (/api/tags, /api/show,
+// /api/chat). No Ollama installed and no external network.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { ollama, detectar, desdeOllama, haciaOllama } from "../../src/providers/ollama.js";
-import { resolveProvider, listProviders } from "../../src/providers/index.js";
-import { turn } from "../../src/harness.js";
+import { ollama, detectar, desdeOllama, haciaOllama } from "../../dist/src/providers/ollama.js";
+import { resolveProvider, listProviders } from "../../dist/src/providers/index.js";
+import { turn } from "../../dist/src/harness.js";
 import { startFakeOllama, modelo, respuestaChat as chat } from "../helpers/fake-ollama.js";
 import { tempWorkspace, cleanEnv } from "../helpers/workspace.js";
 
@@ -20,7 +20,7 @@ let falso;
 before(async () => {
   fake = await startFakeOllama();
   falso = fake.state;
-  // sin esquema, como lo escribe la gente en OLLAMA_HOST: el adaptador lo normaliza
+  // no scheme, the way people write OLLAMA_HOST: the adapter normalizes it
   process.env.OLLAMA_HOST = fake.host;
   ws = await tempWorkspace();
 });
@@ -38,7 +38,7 @@ test("detecta Ollama, habilita solo modelos con herramientas y prefiere uno loca
   const st = ollama.status();
   assert.equal(st.detected, true);
   assert.deepEqual(st.models.map((m) => [m.name, m.tools, m.remote]), [["gemma4:cloud", true, true], ["llava:7b", false, false], ["qwen3:8b", true, false]]);
-  // sin claves de Claude ni Gemini, el harness elige Ollama solo
+  // with no Claude or Gemini keys, the harness picks Ollama on its own
   assert.equal((await resolveProvider()).name, "ollama");
   const lista = await listProviders();
   assert.equal(lista.find((p) => p.default)?.name, "ollama");
@@ -56,18 +56,18 @@ test("Ollama instalado pero sin modelos con herramientas: lo dice", async () => 
   falso.tags = [modelo("llava:7b", ["completion", "vision"])];
   await detectar({ forzar: true });
   assert.equal(ollama.configured(), false);
-  assert.match(ollama.status().reason, /ningún modelo instalado usa herramientas/);
+  assert.match(ollama.status().reason || "", /no installed model can use tools/);
 });
 
 test("sin Ollama corriendo: falla rápido y explica dónde buscó", async () => {
   const antes = process.env.OLLAMA_HOST;
-  process.env.OLLAMA_HOST = "http://127.0.0.1:9"; // puerto cerrado
+  process.env.OLLAMA_HOST = "http://127.0.0.1:9"; // closed port
   try {
     const t0 = Date.now();
     await detectar({ forzar: true });
     assert.ok(Date.now() - t0 < 1500, "la detección no debe frenar el arranque");
     assert.equal(ollama.configured(), false);
-    assert.match(ollama.status().reason, /no detectado en http:\/\/127\.0\.0\.1:9/);
+    assert.match(ollama.status().reason || "", /not detected at http:\/\/127\.0\.0\.1:9/);
   } finally { process.env.OLLAMA_HOST = antes; await detectar({ forzar: true }); }
 });
 
@@ -149,6 +149,39 @@ test("subagente: routing.json decide si usa el modelo rápido o el principal", a
   } finally { delete process.env.ADA_OLLAMA_FAST_MODEL; }
 });
 
+test("con onText, el texto llega en trozos y la respuesta armada es la misma", async () => {
+  falso.chats = [chat({ content: "hola" }, { prompt_eval_count: 4, eval_count: 2 })];
+  const trozos = [];
+  const out = await ollama.call({
+    model: "qwen3:8b",
+    system: "",
+    messages: [{ role: "user", content: "di hola" }],
+    onText: (t) => trozos.push(t),
+  });
+  assert.deepEqual(trozos, ["ho", "la"]);
+  const bloque = out.content[0];
+  assert.equal(bloque?.type, "text");
+  if (bloque?.type === "text") assert.equal(bloque.text, "hola");
+  assert.equal(out.stop_reason, "end_turn");
+  assert.equal(out.usage.output_tokens, 2);
+  assert.equal(falso.pedidos.at(-1).stream, true);
+});
+
+test("con onText, una herramienta se arma desde el trozo final y no se muestra como texto", async () => {
+  falso.chats = [chat({ tool_calls: [{ function: { name: "read_file", arguments: { path: "a.txt" } } }] })];
+  const trozos = [];
+  const out = await ollama.call({
+    model: "qwen3:8b",
+    system: "",
+    messages: [{ role: "user", content: "lee" }],
+    onText: (t) => trozos.push(t),
+  });
+  assert.deepEqual(trozos, []);
+  assert.equal(out.stop_reason, "tool_use");
+  const llamada = out.content.find((b) => b.type === "tool_use");
+  assert.equal(llamada?.type === "tool_use" ? llamada.name : "", "read_file");
+});
+
 test("razonamiento: se separa del texto y vuelve como thinking", () => {
   const r = desdeOllama(chat({ content: "<think>busco el archivo</think>Voy a leerlo.", tool_calls: [{ function: { name: "read_file", arguments: '{"path":"a.js"}' } }] }));
   const [texto, llamada] = r.content;
@@ -162,7 +195,7 @@ test("razonamiento: se separa del texto y vuelve como thinking", () => {
 test("ventana chica: piso de 8192 y resultados grandes van a disco antes", async () => {
   process.env.ADA_OLLAMA_NUM_CTX = "1000";
   const grande = path.join(ws.dir, "grande-prueba.txt");
-  await fs.writeFile(grande, "linea de prueba\n".repeat(700)); // ~2.800 tokens: bajo 6k, sobre 8192 × 0.25
+  await fs.writeFile(grande, "linea de prueba\n".repeat(700)); // ~2,800 tokens: under 6k, over 8192 × 0.25
   try {
     falso.tags = [modelo("qwen3:8b", ["completion", "tools"])];
     await detectar({ forzar: true });

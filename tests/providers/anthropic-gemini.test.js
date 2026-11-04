@@ -1,11 +1,11 @@
-// Adaptadores de Claude y Gemini, sin red: se simula la API con respuestas en el formato
-// documentado. Lo que se prueba es lo que rompe un turno si sale mal: firmas, ids y orden.
+// Claude and Gemini adapters, with no network: the API is simulated with responses in the
+// documented format. What is tested is what breaks a turn if it goes wrong: signatures, ids, and order.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { haciaGemini, desdeGemini } from "../../src/providers/gemini.js";
-import { anthropic } from "../../src/providers/anthropic.js";
-import { turn } from "../../src/harness.js";
+import { haciaGemini, desdeGemini } from "../../dist/src/providers/gemini.js";
+import { anthropic } from "../../dist/src/providers/anthropic.js";
+import { turn } from "../../dist/src/harness.js";
 import { fakeFetch } from "../helpers/fake-fetch.js";
 
 process.env.GEMINI_API_KEY = "clave-de-prueba";
@@ -73,7 +73,7 @@ test("gemini: loop completo, la firma vuelve intacta en cada paso", async () => 
     const decl = p1.body.tools[0].functionDeclarations.find((d) => d.name === "spawn_agent");
     assert.deepEqual(decl.parameters.required, ["agent", "task"]);
 
-    // tercer pedido: user, model(fc-1+SIG_A), user(fr-1), model(fc-2+SIG_B), user(fr-2)
+    // third request: user, model(fc-1+SIG_A), user(fr-1), model(fc-2+SIG_B), user(fr-2)
     const c = p3.body.contents;
     assert.deepEqual(c.map((x) => x.role), ["user", "model", "user", "model", "user"]);
     assert.equal(c[1].parts[0].thoughtSignature, "SIG_A");
@@ -111,6 +111,27 @@ test("gemini: el subagente corre con el modelo rápido del mismo proveedor", asy
     assert.match(sim.pedidos[1].url, /gemini-3\.5-flash-lite:generateContent$/);
     assert.equal(sim.pedidos[1].body.contents.length, 1, "el subagente arranca con un contexto vacío");
     assert.equal(out.trace.events[0].type, "subagent");
+  } finally { sim.restore(); }
+});
+
+test("anthropic: cachea el prefijo y la entrada sigue midiendo la ventana", async () => {
+  const sim = fakeFetch([{
+    content: [{ type: "text", text: "ok" }],
+    stop_reason: "end_turn",
+    usage: { input_tokens: 50, output_tokens: 8, cache_read_input_tokens: 1000, cache_creation_input_tokens: 20 },
+  }]);
+  try {
+    const r = await anthropic.call({
+      model: "m",
+      system: "sistema largo",
+      messages: [{ role: "user", content: "hola" }],
+      tools: [{ name: "read_file", description: "lee", input_schema: { type: "object", properties: {} } }],
+    });
+    assert.deepEqual(sim.pedidos[0].body.cache_control, { type: "ephemeral" });
+    assert.equal(sim.pedidos[0].body.system, "sistema largo");
+    assert.equal(sim.pedidos[0].body.tools[0].cache_control, undefined);
+    assert.equal(r.usage.input_tokens, 1070);
+    assert.equal(r.usage.output_tokens, 8);
   } finally { sim.restore(); }
 });
 

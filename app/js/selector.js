@@ -20,7 +20,7 @@ export function buildOptions(providers) {
     if (p.name !== "ollama") {
       grupos[0].options.push({
         value: `${p.name}|`,
-        label: `${p.label} · ${p.model}${p.configured ? "" : ` (falta ${p.keyEnv})`}`,
+        label: `${p.label} · ${p.model}${p.configured ? "" : ` (missing ${p.keyEnv})`}`,
         disabled: !p.configured,
       });
       continue;
@@ -28,10 +28,10 @@ export function buildOptions(providers) {
     const st = p.status || { models: [] };
     /** @type {Opcion[]} */
     const opciones = [];
-    if (!st.detected) opciones.push({ label: 'No detectado: instala Ollama y corre "ollama serve"', disabled: true });
-    else if (!st.models.length) opciones.push({ label: "Sin modelos: ollama pull qwen3:8b", disabled: true });
+    if (!st.detected) opciones.push({ label: 'Not detected: install Ollama and run "ollama serve"', disabled: true });
+    else if (!st.models.length) opciones.push({ label: "No models: ollama pull qwen3:8b", disabled: true });
     for (const m of st.models || []) {
-      const etiqueta = !m.tools ? "no usa herramientas" : m.remote ? "nube, requiere cuenta" : "local, gratis";
+      const etiqueta = !m.tools ? "does not use tools" : m.remote ? "cloud, account required" : "local, free";
       opciones.push({ value: `ollama|${m.name}`, label: `${m.name}${m.params ? " · " + m.params : ""} (${etiqueta})`, disabled: !m.tools });
     }
     grupos.push({ label: `Ollama · ${st.host || ""}`, options: opciones });
@@ -40,7 +40,7 @@ export function buildOptions(providers) {
 }
 
 /** CU-02.7 Lo que dice la conversación cuando pickSelection() no encuentra ningún modelo. */
-export const SIN_MODELOS = "Ningún modelo disponible. Agrega una clave en .env, o instala Ollama y descarga un modelo: ollama pull qwen3:8b";
+export const SIN_MODELOS = "No model available. Add a key in .env, or install Ollama and download a model: ollama pull qwen3:8b";
 
 /**
  * Qué opción queda elegida: la actual, la guardada, la que el servidor marca por defecto, o la primera.

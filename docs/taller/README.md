@@ -1,63 +1,64 @@
-# Taller: Abre un agente por dentro
+# Workshop: open an agent from the inside
 
-Material del taller presencial de 45 minutos sobre ADA Harness. Todo lo que necesitas está en esta carpeta.
+Material for the 45-minute in-person workshop on ADA Harness. Everything you need is in this folder.
 
-## Antes de empezar
+## Before you start
 
 ```bash
 git clone https://github.com/ada-school/ada-harness.git
 cd ada-harness
-cp .env.example .env                      # pega tu clave de Claude o de Gemini
+cp .env.example .env                      # paste your Claude or Gemini key
 cp docs/taller/descuentos.js workspace/
-node src/server.js                        # abre http://localhost:3000
+npm install
+npm start                                 # opens http://localhost:3000
 ```
 
-En Windows, PowerShell acepta los mismos comandos. Abre el chat siempre en `http://localhost:3000`, nunca con doble clic sobre el HTML.
+On Windows, PowerShell accepts the same commands. Always open the chat at `http://localhost:3000`, never by double-clicking the HTML.
 
-Sirve una clave de Claude (`ANTHROPIC_API_KEY`) o de Gemini (`GEMINI_API_KEY`); el selector "Modelo" del chat muestra las que tengas.
+A Claude key (`ANTHROPIC_API_KEY`) or a Gemini key (`GEMINI_API_KEY`) is enough. The chat's "Model" selector shows the ones you have.
 
-**Sin clave:** instala [Ollama](https://ollama.com/download) y descarga un modelo **antes del taller** (son unos 5 GB; el wifi de la sala no da para que todos lo bajen a la vez):
+**No key:** install [Ollama](https://ollama.com/download) and download a model **before the workshop** (about 5 GB; the room's wifi cannot carry everyone downloading at once):
 
 ```bash
 ollama pull qwen3:8b
 ```
 
-Con Ollama corriendo, el harness lo detecta solo y el modelo aparece en el selector como "local, gratis". Sin Node 18 ni ninguna de estas opciones: trabaja con una pareja que lo tenga.
+With Ollama running, the harness finds it on its own and the model appears in the selector as "local, free". Without Node 18 and without any of these options: pair up with someone who has them.
 
-## Qué hay aquí
+## What is here
 
-| Archivo | Para qué |
+| File | What it is for |
 |---|---|
-| `descuentos.js` | El código que usamos en la demo y en la práctica. Cópialo a `workspace/`. |
-| `plantilla-SKILL.md` | La plantilla de tu primer skill. |
-| `documentar-funcion/SKILL.md` | El ejemplo resuelto. |
+| `descuentos.js` | The code we use in the demo and the exercise. Copy it to `workspace/`. |
+| `plantilla-SKILL.md` | The template for your first skill. |
+| `documentar-funcion/SKILL.md` | The worked example. |
 
-## La práctica en cuatro pasos
+## The exercise in four steps
 
-1. Crea tu skill a partir de la plantilla:
+1. Create your skill from the template:
 
    ```bash
-   mkdir harness/skills/tu-skill
-   cp docs/taller/plantilla-SKILL.md harness/skills/tu-skill/SKILL.md
+   mkdir harness/skills/your-skill
+   cp docs/taller/plantilla-SKILL.md harness/skills/your-skill/SKILL.md
    ```
 
-2. Edita el archivo. El `name` debe ser igual al nombre de la carpeta, y la `description` va en una sola línea, escrita como disparo: "Cárgalo cuando pidan…".
-3. En el chat, pide algo que use las palabras de tu `description`. No hace falta reiniciar el servidor: el índice de skills se relee en cada turno.
-4. Busca la evidencia en el inspector: `load_skill` en **Eventos del loop**, y `skillsIndex` más alto en **Capas**.
+2. Edit the file. `name` must match the folder name, and `description` is one line, written as a trigger: "Load it when they ask for…".
+3. In the chat, ask for something that uses the words in your `description`. You do not need to restart the server: the skills index is reread on every turn.
+4. Look for the evidence in the inspector: `load_skill` under **Loop events**, and a taller `skillsIndex` under **Layers**.
 
-Para probar el ejemplo resuelto: `cp -r docs/taller/documentar-funcion harness/skills/` y pide "Documenta descuentos.js".
+To try the worked example: `cp -r docs/taller/documentar-funcion harness/skills/` and ask "Document descuentos.js".
 
-## Si te trabas
+## If you get stuck
 
-| Síntoma | Salida |
+| Symptom | Way out |
 |---|---|
-| No aparece `load_skill` | La `description` es vaga. Escríbela como "Cárgalo cuando pidan X" y usa la palabra X en tu pedido. |
-| `load_skill` da error | El `name` no coincide con la carpeta, o el archivo no se llama `SKILL.md`. |
-| Falta la clave (`ANTHROPIC_API_KEY` o `GEMINI_API_KEY`) | Copia `.env.example` a `.env`, pega la clave y reinicia el servidor. O usa Ollama, sin clave. |
-| "Ollama: no detectado" | Abre la app de Ollama o corre `ollama serve`, y vuelve a abrir el selector "Modelo". |
-| Con Ollama, el agente no carga tu skill | Los modelos locales son más literales: usa en tu pedido las mismas palabras de la `description`. |
-| "Failed to fetch" en el chat | Abriste el HTML con doble clic. Entra por `http://localhost:3000`. |
+| `load_skill` does not appear | The `description` is vague. Write it as "Load it when they ask for X" and use the word X in your request. |
+| `load_skill` returns an error | `name` does not match the folder, or the file is not named `SKILL.md`. |
+| The key is missing (`ANTHROPIC_API_KEY` or `GEMINI_API_KEY`) | Copy `.env.example` to `.env`, paste the key, and restart the server. Or use Ollama, with no key. |
+| The startup line says "Ollama: no detectado" | Open the Ollama app or run `ollama serve`, then open the "Model" selector again. That startup line is still Spanish. |
+| With Ollama, the agent does not load your skill | Local models are more literal: use the same words as the `description` in your request. |
+| "Failed to fetch" in the chat | You opened the HTML with a double click. Go in through `http://localhost:3000`. |
 
-## Para casa
+## For later
 
-Abre `docs/Anatomía de un Agente.html`, capa 5: llena la ventana de contexto y prueba truncar, compactar y descargar a archivos.
+Open `docs/Anatomía de un Agente.html`, layer 5: fill the context window and try truncate, compact, and offload to files.
