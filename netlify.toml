@@ -1,0 +1,19 @@
+# The chat is static files in app/. It has no build and no client-side router.
+# `npm run build` compiles the engine to dist/ for Node. Netlify does not run that server.
+# The publish folder is the chat, plus docs/ at /docs/, which is where the Node server serves the explainer.
+# API keys stay in the Netlify UI. This file only holds values that are not secrets.
+# The chat calls /api on the same host. There is no VITE_API_BASE.
+# A missing path stays a 404. Do not send every route to index.html.
+
+[build]
+  command = "npm run build && rm -rf publish && mkdir publish && cp -R app/. publish/ && mkdir publish/docs && cp -R docs/. publish/docs/"
+  publish = "publish"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Non-secret settings that differ by context. They apply to a Node process, not to the static files.
+# Leave a value here when a preview should not use the production one. Example: ADA_PROVIDER = "gemini"
+[context.deploy-preview.environment]
+
+[context.production.environment]

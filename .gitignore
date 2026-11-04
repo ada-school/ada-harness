@@ -1,5 +1,6 @@
 node_modules/
 dist/
+publish/
 .env
 .sessions/
 .DS_Store
