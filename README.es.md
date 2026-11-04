@@ -1,8 +1,36 @@
 > Guía en español. La versión en inglés, que GitHub muestra primero, es [README.md](README.md).
 
-# ADA Harness
+<p align="center">
+  <a href="https://github.com/ada-school/ada-harness">
+    <img src="media/banner.png" alt="ADA Harness: una plantilla abierta para un AI harness. Claude, Gemini, y modelos locales con Ollama. Un loop, y un chat que muestra cada capa." width="100%" />
+  </a>
+</p>
 
-**Una plantilla mínima y abierta para construir un AI Harness.**
+<p align="center">
+  <a href="#un-loop-varios-modelos-claude-gemini-y-ollama"><img src="https://img.shields.io/badge/Claude-D97757?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude" /></a>
+  <a href="#un-loop-varios-modelos-claude-gemini-y-ollama"><img src="https://img.shields.io/badge/Gemini-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white" alt="Gemini" /></a>
+  <a href="#modelos-locales-y-gratis-con-ollama"><img src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white" alt="Ollama" /></a>
+</p>
+
+<p align="center">
+  <strong>El modelo devuelve tokens. El harness decide cuáles entran.</strong>
+  <br />
+  <em>Claude, Gemini, o un modelo local. El mismo loop.</em>
+</p>
+
+<p align="center">
+  <a href="https://ada-school.org"><img src="https://img.shields.io/badge/Patrocinador_principal-ADA_School-0B3A4A?style=for-the-badge" alt="Patrocinador principal: ADA School" /></a>
+  <br />
+  <em>ADA School es el patrocinador principal de este proyecto.</em>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Node-18+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node 18 o superior" />
+  <img src="https://img.shields.io/badge/licencia-MIT-blue?style=for-the-badge" alt="Licencia: MIT" />
+  <img src="https://img.shields.io/github/stars/ada-school/ada-harness?style=for-the-badge&color=yellow" alt="Estrellas" />
+</p>
+
+<h1 align="center">ADA Harness: una plantilla abierta de AI harness para Claude, Gemini, y Ollama</h1>
 
 Un modelo de lenguaje recibe tokens y devuelve tokens. Eso es todo lo que hace. Un *harness* es la estructura alrededor de esa llamada: decide qué tokens entran, ejecuta lo que el modelo pide, y vuelve a llamar. Esta plantilla deja esa estructura explícita en archivos de texto que puedes leer, versionar y cambiar, y la acompaña de un chat mínimo donde ves cada capa funcionando en vivo.
 

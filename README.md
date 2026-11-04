@@ -1,6 +1,34 @@
-# ADA Harness
+<p align="center">
+  <a href="https://github.com/ada-school/ada-harness">
+    <img src="media/banner.png" alt="ADA Harness: a small open template for an AI harness. Claude, Gemini, and local models through Ollama. One loop, a chat that shows each layer." width="100%" />
+  </a>
+</p>
 
-**A small, open template for building an AI harness.**
+<p align="center">
+  <a href="#one-loop-several-models-claude-gemini-and-ollama"><img src="https://img.shields.io/badge/Claude-D97757?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude" /></a>
+  <a href="#one-loop-several-models-claude-gemini-and-ollama"><img src="https://img.shields.io/badge/Gemini-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white" alt="Gemini" /></a>
+  <a href="#local-free-models-with-ollama"><img src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white" alt="Ollama" /></a>
+</p>
+
+<p align="center">
+  <strong>The model returns tokens. The harness decides which ones go in.</strong>
+  <br />
+  <em>Claude, Gemini, or a local model. Same loop.</em>
+</p>
+
+<p align="center">
+  <a href="https://ada-school.org"><img src="https://img.shields.io/badge/Main_sponsor-ADA_School-0B3A4A?style=for-the-badge" alt="Main sponsor: ADA School" /></a>
+  <br />
+  <em>ADA School is the main sponsor of this project.</em>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Node-18+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node 18 or newer" />
+  <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License: MIT" />
+  <img src="https://img.shields.io/github/stars/ada-school/ada-harness?style=for-the-badge&color=yellow" alt="Stars" />
+</p>
+
+<h1 align="center">ADA Harness: an open template for an AI harness with Claude, Gemini, and Ollama</h1>
 
 A language model receives tokens and returns tokens. That is all it does. A *harness* is the structure around that call: it decides which tokens go in, runs what the model asks for, and calls again. This template leaves that structure in text files you can read, version, and change, plus a small chat where you watch each layer work live.
 
