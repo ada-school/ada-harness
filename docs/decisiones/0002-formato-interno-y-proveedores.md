@@ -17,11 +17,11 @@ The harness talks to Claude, Gemini, and Ollama. Each API has its own way to rep
 
 - The loop (`src/harness.ts`; Node runs `dist/src/harness.js`) has no `if` per provider.
 - Adding a provider is one file and one line in `src/providers/index.ts`. Node runs `dist/src/providers/index.js`.
-- Claude barely translates, and that is a starting advantage for Anthropic that we accept: the format is well documented and covers everything the loop needs.
+- Claude barely translates, and that is a starting advantage for Anthropic that we accept: the format is well documented and covers everything the loop needs. The request adds a top-level `cache_control` so the API caches the prefix. The count stored as `input_tokens` adds the cached tokens back, because Claude reports only the tail. That changes the cost, not the window.
 
 ## Checked by
 
-`tests/providers/`: round-trip translation, tool ids, Gemini signatures that come back intact, and private fields that do not leak to another API.
+`tests/providers/`: round-trip translation, tool ids, Gemini signatures that come back intact, private fields that do not leak to another API, and the Claude cache breakpoint (`anthropic: cachea el prefijo y la entrada sigue midiendo la ventana`).
 
 ## When to revisit
 

@@ -118,7 +118,7 @@ These are the known limits. None of them start before Phase 2 is finished, so th
 - [x] Session history on disk. `.sessions/sessions.json`, moved with `ADA_SESSIONS`. The same browser keeps the session id. The page still starts empty after a reload.
 - [x] Token counts from the provider API, beside the 4-character estimate. The inspector shows the API's input and output next to the estimate. Compaction still uses the estimate. No extra `count_tokens` call.
 - [x] A sandbox for `run_command`. On macOS, Seatbelt: the process can read and write the workspace, and it can read system libraries and its own install prefix. It cannot read the home directory or write outside the workspace. Linux is still a directory and a timeout. Not a container.
-- [ ] Prompt caching on providers that offer it. It lowers cost, not window size.
+- [x] Prompt caching on providers that offer it. Claude sends a top-level `cache_control`. The inspector still shows the full window: the cached tokens are added back to `input_tokens`. Gemini 2.5 and newer caches on its own. Ollama has no prompt cache. It lowers cost, not window size.
 
 ## Phase 5. Error messages in English, Spanish kept
 
@@ -136,4 +136,4 @@ Exit: with `ADA_LANG` unset, or set to `en`, the errors are English. With `ADA_L
 
 ## How to pick up the next slice
 
-Phase 4, next slice: prompt caching on providers that offer it. It lowers cost, not window size. Do not start another slice in the same change.
+Phase 4 is done. There is no next slice in this file.

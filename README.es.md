@@ -645,7 +645,7 @@ La API solo atiende al propio chat: el servidor escucha en `127.0.0.1`, y un POS
 `npm install` trae TypeScript, solo como herramienta de desarrollo, y `npm run build` escribe `dist/`. Eso es lo que corre Node. Los tipos compartidos viven en `src/types.ts` y no exportan un valor en tiempo de ejecución. La fuente del motor son los `.ts` de `src/` y de `harness/tools/`. `app/`, las pruebas y `bin/ada.js` siguen en JavaScript. `bin/ada.js` importa `dist/`.
 
 ```bash
-npm test                      # las 126 pruebas: unit, providers e integration
+npm test                      # las 127 pruebas: unit, providers e integration
 npm run test:unit             # una capa
 npm run trazabilidad          # cada criterio de los casos de uso contra sus pruebas
 npm run typecheck             # tipos. La compilación escribe dist/ primero
@@ -654,7 +654,7 @@ npm run check                 # tipos + pruebas: córrelo antes de un commit
 
 ```mermaid
 flowchart LR
-    U["unit · 95<br/>lógica pura, arquitectura,<br/>trazabilidad, milisegundos"] --> P["providers · 20<br/>APIs simuladas, Ollama falso"] --> I["integration · 11<br/>servidor real de punta a punta"]
+    U["unit · 95<br/>lógica pura, arquitectura,<br/>trazabilidad, milisegundos"] --> P["providers · 21<br/>APIs simuladas, Ollama falso"] --> I["integration · 11<br/>servidor real de punta a punta"]
 ```
 
 Ninguna prueba usa claves ni sale a internet: Claude y Gemini se simulan con `fakeFetch`, Ollama con un servidor que imita `/api/tags`, `/api/show` y `/api/chat`, y cada prueba trabaja en un workspace y una memoria temporales (`ADA_WORKSPACE`, `ADA_MEMORY`): correrlas no deja rastro en el repo. GitHub Actions corre tipos y pruebas en Node 18, 20 y 22 en cada push (`.github/workflows/ci.yml`).
@@ -739,8 +739,8 @@ El porqué de cada pieza está en [`docs/decisiones/`](docs/decisiones/README.md
 - **Los agentes frontend y qa piden un modelo capaz.** Por eso usan el modelo principal. Con un modelo local de 8B, el ciclo de pruebas primero suele perderse a mitad de camino: para ese trabajo, usa Claude o Gemini.
 - **Un modelo por conversación.** Cambiar de modelo o de proveedor empieza una conversación nueva, porque las firmas y los ids de una API no sirven en otra, y un historial escrito por un modelo confunde al siguiente.
 - **Modelos locales más limitados.** Un modelo de 8B en Ollama elige peor las herramientas y se pierde antes en tareas largas. Y su ventana real (16k por defecto) se llena mucho más rápido: la compactación aparece en conversaciones cortas.
-- **Gemini sin opciones avanzadas.** El adaptador usa `generateContent` con el nivel de razonamiento por defecto del modelo, sin streaming ni caché. Las pruebas simulan la API con el formato documentado: antes de un taller, haz un turno real con tu clave.
-- **Sin caché de prompt.** La API permite cachear el bloque de sistema y las herramientas para abaratar llamadas repetidas. No cambia el tamaño de la ventana, solo el costo.
+- **Gemini sin streaming.** El adaptador usa `generateContent` con el nivel de razonamiento por defecto del modelo. Las pruebas simulan la API con el formato documentado: antes de un taller, haz un turno real con tu clave.
+- **La caché de prompt baja el costo, no la ventana.** Claude manda `cache_control: { type: "ephemeral" }` en cada llamada. La API cachea el prefijo (herramientas, luego el sistema, luego el historial) y mueve el punto de corte hacia adelante a medida que crece la conversación. El inspector sigue mostrando la ventana completa: el `input_tokens` de Claude es solo la cola, y el adaptador le suma los tokens cacheados. Gemini 2.5 y posteriores cachean ese prefijo por su cuenta. Ollama no tiene caché de prompt. Un prompt corto no se cachea, y la llamada igual responde.
 
 ---
 

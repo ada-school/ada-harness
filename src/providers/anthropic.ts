@@ -26,6 +26,8 @@ export const anthropic = {
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
         model, max_tokens: maxTokens, system,
+        // ponytail: one top-level breakpoint. The API parks it on the last block and slides it forward. Explicit breakpoints if a shared prefix must stay cached while the tail changes.
+        cache_control: { type: "ephemeral" },
         messages: messages.map(limpiar),
         ...(tools?.length ? { tools } : {}),
       }),
@@ -33,9 +35,18 @@ export const anthropic = {
     const data: any = await res.json();
     if (!res.ok) throw new Error(`Claude: ${data?.error?.message || `HTTP ${res.status}`}`);
     // Already in the internal format: { content: [blocks], stop_reason, usage }
-    return { content: data.content, stop_reason: data.stop_reason, usage: data.usage };
+    return { content: data.content, stop_reason: data.stop_reason, usage: usoDeVentana(data.usage) };
   },
 } satisfies Provider;
+
+/** Claude's input_tokens is only the tail after the cache breakpoint. The window is the whole prefix. */
+function usoDeVentana(usage: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined): ModelResponse["usage"] {
+  if (!usage) return {};
+  return {
+    input_tokens: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0),
+    output_tokens: usage.output_tokens,
+  };
+}
 
 function limpiar(m: Message): Message {
   if (typeof m.content === "string") return m;

@@ -33,6 +33,7 @@ export const gemini = {
   configured: () => Boolean(clave()),
 
   async call({ model, system, messages, tools, maxTokens = 4096 }: CallArgs): Promise<ModelResponse> {
+    // ponytail: Gemini 2.5 and newer cache this prefix on their own. Explicit cachedContents is a second resource, and Gemini 4 dropped it.
     const key = clave();
     if (!key) throw new Error(text("missingKey", { name: "GEMINI_API_KEY" }));
     const body = {

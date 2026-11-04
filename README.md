@@ -646,7 +646,7 @@ The API only serves the chat itself: the server listens on `127.0.0.1`, and a PO
 `npm install` brings TypeScript, a development tool, and `npm run build` writes `dist/`. That is what Node runs. Shared types live in `src/types.ts` and export no runtime value. The engine sources are the `.ts` files under `src/` and `harness/tools/`. `app/`, the tests, and `bin/ada.js` stay JavaScript. `bin/ada.js` imports `dist/`.
 
 ```bash
-npm test                      # 126 tests: unit, providers, and integration
+npm test                      # 127 tests: unit, providers, and integration
 npm run test:unit             # one layer
 npm run trazabilidad          # each use-case criterion against its tests
 npm run typecheck             # types. The build writes dist/ first
@@ -655,7 +655,7 @@ npm run check                 # types plus tests: run it before a commit
 
 ```mermaid
 flowchart LR
-    U["unit · 95<br/>pure logic, architecture,<br/>traceability, milliseconds"] --> P["providers · 20<br/>simulated APIs, fake Ollama"] --> I["integration · 11<br/>real server, end to end"]
+    U["unit · 95<br/>pure logic, architecture,<br/>traceability, milliseconds"] --> P["providers · 21<br/>simulated APIs, fake Ollama"] --> I["integration · 11<br/>real server, end to end"]
 ```
 
 No test uses keys or reaches the internet. Claude and Gemini are simulated with `fakeFetch`, Ollama with a server that imitates `/api/tags`, `/api/show`, and `/api/chat`, and each test works in a temporary workspace and memory (`ADA_WORKSPACE`, `ADA_MEMORY`): running them leaves no trace in the repo. GitHub Actions runs types and tests on Node 18, 20, and 22 on every push (`.github/workflows/ci.yml`).
@@ -740,8 +740,8 @@ The reason for each piece is in [`docs/decisiones/`](docs/decisiones/README.md),
 - **The frontend and qa agents need a capable model.** That is why they use the main model. With a local 8B model, the tests-first cycle usually gets lost halfway. For that work, use Claude or Gemini.
 - **One model per conversation.** Switching model or provider starts a new conversation, because one API's signatures and ids do not work on another, and a history written by one model confuses the next.
 - **Local models are more limited.** An 8B model on Ollama picks tools worse and loses the thread sooner on long tasks. And its real window (16k by default) fills much faster: compaction shows up in short conversations.
-- **Gemini without advanced options.** The adapter uses `generateContent` at the model's default reasoning level, with no streaming and no cache. Tests simulate the API with the documented format: before a workshop, do one real turn with your key.
-- **No prompt cache.** The API can cache the system block and the tools to make repeated calls cheaper. It does not change the window size, only the cost.
+- **Gemini without streaming.** The adapter uses `generateContent` at the model's default reasoning level. Tests simulate the API with the documented format: before a workshop, do one real turn with your key.
+- **Prompt cache lowers cost, not the window.** Claude sends `cache_control: { type: "ephemeral" }` on each call. The API caches the prefix (tools, then system, then the history) and moves the breakpoint forward as the conversation grows. The inspector still shows the full window: Claude's `input_tokens` is only the tail, and the adapter adds the cached tokens back. Gemini 2.5 and newer caches that prefix on its own. Ollama has no prompt cache. A short prompt is not cached, and the call still succeeds.
 
 ---
 
