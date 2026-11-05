@@ -6,6 +6,8 @@
 # A missing path stays a 404. Do not send every route to index.html.
 
 [build]
+  # Repo root. dist/ is build output and is not in the clone, so it cannot be the base.
+  base = "."
   command = "npm run build && rm -rf publish && mkdir publish && cp -R app/. publish/ && mkdir publish/docs && cp -R docs/. publish/docs/"
   publish = "publish"
 
